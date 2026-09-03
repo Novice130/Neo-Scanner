@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder, dewarp
+from camscan import scanner, ocr, pdf_builder, dewarp, session
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -130,6 +130,10 @@ TOOLTIPS = {
     "boundary_detector": (
         "Select document boundary detector: YOLOv8 with cubic polynomial dewarping "
         "for curved notebook spines, or Classic OpenCV contour detection."
+    ),
+    "student_tag": (
+        "Enter student name or ID to tag captures and group exported files/folders "
+        "by student and date."
     ),
     "postprocessing": "Set the postprocessing effect applied to the captured images",
     "system_appearance": "Set the user interface appearance of the application",
@@ -400,6 +404,7 @@ class CamScanApp(ctk.CTk):
         self.var_boundary_detector = tk.StringVar(
             value=BOUNDARY_DETECTION_OPTIONS[0]
         )
+        self.var_student_tag = tk.StringVar(value="")
         self.var_select_all_captures = tk.IntVar(value=0)
 
         # configure window
@@ -479,6 +484,16 @@ class CamScanApp(ctk.CTk):
             variable=self.var_boundary_detector,
         )
 
+        # Add student session tagging
+        self.student_tag_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Student Name / ID:", anchor="w"
+        )
+        self.student_tag_entry = ctk.CTkEntry(
+            self.left_sidebar_frame,
+            placeholder_text="e.g. Student_101",
+            textvariable=self.var_student_tag,
+        )
+
         # Add a button for capturing the screen
         self.capture_image_label = ctk.CTkLabel(
             self.left_sidebar_frame, text="Capture Image", anchor="w"
@@ -552,6 +567,8 @@ class CamScanApp(ctk.CTk):
         self.scaling_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.boundary_detector_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+        self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.student_tag_entry.pack(**LEFT_MENU_PACK_KWARGS)
         self.capture_image_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
         self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
@@ -656,6 +673,10 @@ class CamScanApp(ctk.CTk):
         widgets.Tooltip(
             widget=self.boundary_detector_option_menu,
             text=TOOLTIPS["boundary_detector"],
+        )
+        widgets.Tooltip(
+            widget=self.student_tag_entry,
+            text=TOOLTIPS["student_tag"],
         )
         widgets.Tooltip(
             widget=self.free_capture_setting_check_box,
@@ -804,8 +825,10 @@ class CamScanApp(ctk.CTk):
             )
             return
 
-        # Give the capture a name using a timestamp string
+        # Give the capture a name using student tag and timestamp string
         timestamp_str = datetime.now().strftime(r"%Y%m%d_%H%M%S_%f")
+        clean_tag = session.sanitize_tag(self.var_student_tag.get())
+        base_name = f"{clean_tag}_{timestamp_str}" if clean_tag else timestamp_str
 
         # If we are using two-page mode, cut the image into left and right parts
         if self.var_two_page_mode.get():
@@ -816,14 +839,14 @@ class CamScanApp(ctk.CTk):
                 CaptureEntry(
                     master=self.scrollable_frame,
                     image=left_image,
-                    name=f"{timestamp_str}_1",
+                    name=f"{base_name}_1",
                     index=len(self.entries) + 1,
                     move_entry=self.move_entry,
                 ),
                 CaptureEntry(
                     master=self.scrollable_frame,
                     image=right_image,
-                    name=f"{timestamp_str}_2",
+                    name=f"{base_name}_2",
                     index=len(self.entries) + 2,
                     move_entry=self.move_entry,
                 ),
@@ -834,7 +857,7 @@ class CamScanApp(ctk.CTk):
                 CaptureEntry(
                     master=self.scrollable_frame,
                     image=image,
-                    name=timestamp_str,
+                    name=base_name,
                     index=len(self.entries) + 1,
                     move_entry=self.move_entry,
                 )
@@ -950,9 +973,11 @@ class CamScanApp(ctk.CTk):
             )
             return
 
-        # Create the name of the output file as a timestamp string
-        timestamp_str = datetime.now().strftime(r"%Y%m%d_%H%M%S")
-        initialfile = f"captures_{timestamp_str}.{file_type}"
+        # Create the name of the output file tagged with student session and date
+        initialfile = session.generate_session_filename(
+            student_tag=self.var_student_tag.get(),
+            ext=file_type,
+        )
 
         # Bring up a dialog asking for the output file path
         file_path = tk.filedialog.asksaveasfilename(
@@ -1133,9 +1158,11 @@ class CamScanApp(ctk.CTk):
         if not file_dialog_dir:
             return
 
-        # Create the name of the output directory as a timestamp string
-        timestamp_str = datetime.now().strftime(r"%Y%m%d_%H%M%S")
-        output_dir = f"{file_dialog_dir}/captures_{timestamp_str}"
+        # Create the name of the output directory tagged with student session and date
+        session_dirname = session.generate_session_dirname(
+            student_tag=self.var_student_tag.get()
+        )
+        output_dir = f"{file_dialog_dir}/{session_dirname}"
         os.makedirs(output_dir, exist_ok=True)
 
         # For each capture, write the image to the output directory
