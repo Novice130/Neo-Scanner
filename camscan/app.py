@@ -461,13 +461,33 @@ class CamScanApp(ctk.CTk):
             font=ctk.CTkFont(size=20, weight="bold"),
         )
 
-        # Add a button for the camera settings
+        # Add dropdown for directly selecting active camera device by name
+        self.camera_selection_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Active Camera:", anchor="w"
+        )
+        camera_names = (
+            [f"{name} ({idx})" for idx, name in getattr(self.camera, "available_devices", [])]
+            if getattr(self.camera, "available_devices", None)
+            else ["Default Camera (0)"]
+        )
+        current_cam_display = f"{self.camera.device_name} ({self.camera.index})"
+        self.var_camera_device = tk.StringVar(
+            value=current_cam_display if current_cam_display in camera_names else camera_names[0]
+        )
+        self.camera_selection_option_menu = ctk.CTkOptionMenu(
+            self.left_sidebar_frame,
+            values=camera_names,
+            command=self.change_camera_event,
+            variable=self.var_camera_device,
+        )
+
+        # Add button for resolution / advanced camera settings
         self.camera_settings_label = ctk.CTkLabel(
-            self.left_sidebar_frame, text="Camera Settings:", anchor="w"
+            self.left_sidebar_frame, text="Resolution & Advanced:", anchor="w"
         )
         self.configure_camera_button = ctk.CTkButton(
             self.left_sidebar_frame,
-            text="Configure Camera",
+            text="Resolution Settings",
             command=self.configure_camera_event,
         )
         self.camera_settings_button = ctk.CTkButton(
@@ -689,6 +709,8 @@ class CamScanApp(ctk.CTk):
         )
         self.capture_image_button.pack(padx=LEFT_MENU_PAD_X, pady=(4, 8), fill="x")
 
+        self.camera_selection_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.camera_selection_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.student_tag_entry.pack(**LEFT_MENU_PACK_KWARGS)
         self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
@@ -962,11 +984,11 @@ class CamScanApp(ctk.CTk):
         max_width = self.camera_image_widget.winfo_width()
         max_height = self.camera_image_widget.winfo_height()
 
-        # At startup, this area might still be of size zero. If so, try later
-        if not (max_width > 1 and max_height > 1):
-            # Run again after a delay
-            self.after(ms=CAMERA_FEED_WAIT_MS, func=self.show_frame)
-            return
+        if max_width <= 10 or max_height <= 10:
+            win_w = self.winfo_width()
+            win_h = self.winfo_height()
+            max_width = max(max_width, win_w - 620, 640)
+            max_height = max(max_height, win_h - 40, 480)
 
         # Capture an image and the resulting detected contour from the camera
         raw_image, _, contour = self.capture()
@@ -1565,6 +1587,14 @@ class CamScanApp(ctk.CTk):
         except Exception:
             pass
         self.destroy()
+
+    def change_camera_event(self, selected_text: str):
+        """Switch active camera when chosen from dropdown."""
+        import re
+        match = re.search(r"\((\d+)\)$", selected_text)
+        if match:
+            idx = int(match.group(1))
+            self.camera.set_index(idx)
 
     def change_postprocessing_event(self, *args):
         """
