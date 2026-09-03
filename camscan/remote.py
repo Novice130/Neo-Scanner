@@ -22,7 +22,9 @@ try:
     from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
     from pydantic import BaseModel
     import uvicorn
-except ImportError:
+except ImportError as e:
+    import sys
+    print(f"DEBUG: FastAPI import failed: {e}", file=sys.stderr)
     FastAPI = None
 
 logger = logging.getLogger(__name__)

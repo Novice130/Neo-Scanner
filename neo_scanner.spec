@@ -1,8 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
 
 datas = []
+binaries = []
 datas += collect_data_files("customtkinter")
 
 # Collect model weights if present
@@ -40,11 +41,26 @@ hiddenimports = [
 # Collect submodules for heavy libraries
 hiddenimports += collect_submodules("uvicorn")
 hiddenimports += collect_submodules("fastapi")
+hiddenimports += collect_submodules("starlette")
+hiddenimports += collect_submodules("pydantic")
+hiddenimports += collect_submodules("pydantic_core")
+datas += collect_data_files("fastapi")
+datas += collect_data_files("starlette")
+
+tv_datas, tv_binaries, tv_hidden = collect_all("torchvision")
+datas += tv_datas
+binaries += tv_binaries
+hiddenimports += tv_hidden
+
+ul_datas, ul_binaries, ul_hidden = collect_all("ultralytics")
+datas += ul_datas
+binaries += ul_binaries
+hiddenimports += ul_hidden
 
 a = Analysis(
     ["camscan/main.py"],
     pathex=["."],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

@@ -451,13 +451,13 @@ class CamScanApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Configure the left sidebar
-        self.left_sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0)
+        # Configure the left sidebar (Scrollable so all controls fit and scroll smoothly)
+        self.left_sidebar_frame = ctk.CTkScrollableFrame(self, width=280, corner_radius=0)
 
         # Add a label to the top of the sidebar
         self.left_sidebar_title_label = ctk.CTkLabel(
             self.left_sidebar_frame,
-            text="Settings",
+            text="Neo Scanner 📄",
             font=ctk.CTkFont(size=20, weight="bold"),
         )
 
@@ -672,9 +672,73 @@ class CamScanApp(ctk.CTk):
             command=self.finalize_session,
         )
 
-        # Organize left menu items
-        self.left_sidebar_title_label.pack(padx=LEFT_MENU_PAD_X, pady=20)
-        self.camera_settings_label.pack(**LEFT_MENU_PACK_KWARGS)
+        # Organize left menu items logically into clean sections
+        self.left_sidebar_title_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 10))
+
+        # --- SECTION 1: 📸 SCAN & CAPTURE ---
+        self.sec_scan_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="📸 Scan & Capture", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        )
+        self.sec_scan_label.pack(padx=LEFT_MENU_PAD_X, pady=(10, 4), fill="x")
+        self.capture_image_button.configure(
+            text="📸 Capture Page [Space]",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=40,
+            fg_color="#1976D2",
+            hover_color="#1565C0",
+        )
+        self.capture_image_button.pack(padx=LEFT_MENU_PAD_X, pady=(4, 8), fill="x")
+
+        self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.student_tag_entry.pack(**LEFT_MENU_PACK_KWARGS)
+        self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.boundary_detector_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+
+        # --- SECTION 2: ⚡ AUTO-CAPTURE ON PAGE TURN ---
+        self.sec_auto_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="⚡ Auto-Capture on Turn", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        )
+        self.sec_auto_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 4), fill="x")
+        self.auto_capture_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.motion_settings_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.motion_status_label.pack(**LEFT_MENU_PACK_KWARGS)
+
+        # --- SECTION 3: 🚀 FINALIZE & EXPORT ---
+        self.sec_export_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="🚀 Finalize & Export", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        )
+        self.sec_export_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 4), fill="x")
+        self.finalize_session_button.configure(
+            text="Finish & Export Session",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=38,
+            fg_color="#2e7d32",
+            hover_color="#1b5e20",
+        )
+        self.finalize_session_button.pack(padx=LEFT_MENU_PAD_X, pady=(4, 8), fill="x")
+
+        self.watched_folder_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.watched_folder_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.ocr_engine_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.ocr_engine_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+        self.export_merged_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
+        self.export_separate_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
+
+        # --- SECTION 4: 📱 REMOTE CONTROL (TAILSCALE) ---
+        self.sec_remote_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="📱 Remote Control", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        )
+        self.sec_remote_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 4), fill="x")
+        self.remote_server_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.remote_url_label.pack(padx=LEFT_MENU_PAD_X, pady=(0, 6))
+
+        # --- SECTION 5: ⚙️ CAMERA & HARDWARE ---
+        self.sec_settings_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="⚙️ Camera & Appearance", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+        )
+        self.sec_settings_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 4), fill="x")
         self.configure_camera_button.pack(**LEFT_MENU_PACK_KWARGS)
         self.camera_settings_button.pack(**LEFT_MENU_PACK_KWARGS)
         self.postprocessing_menu_label.pack(**LEFT_MENU_PACK_KWARGS)
@@ -682,40 +746,16 @@ class CamScanApp(ctk.CTk):
         self.appearance_mode_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.appearance_mode_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.scaling_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.scaling_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
-        self.remote_server_check_box.pack(**LEFT_MENU_PACK_KWARGS)
-        self.remote_url_label.pack(padx=LEFT_MENU_PAD_X, pady=(0, 4))
-        self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.boundary_detector_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
-        self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.student_tag_entry.pack(**LEFT_MENU_PACK_KWARGS)
-        self.capture_image_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
-        self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
-        self.auto_capture_check_box.pack(**LEFT_MENU_PACK_KWARGS)
-        self.motion_settings_frame.pack(**LEFT_MENU_PACK_KWARGS)
-        self.motion_status_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.capture_image_button.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_separate_captures_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_separate_captures_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_separate_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_merged_captures_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_merged_captures_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
-        self.ocr_engine_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.ocr_engine_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
-        self.export_merged_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
-        self.watched_folder_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.watched_folder_frame.pack(**LEFT_MENU_PACK_KWARGS)
-        self.finalize_session_button.pack(padx=LEFT_MENU_PAD_X, pady=(6, 15))
+        self.scaling_option_menu.pack(padx=LEFT_MENU_PAD_X, pady=(0, 20))
 
         # Configure the central widget showing the camera feed
         self.camera_image_widget = ctk.CTkLabel(self, text=None, padx=0, pady=0)
         self.camera_image_label = ctk.CTkLabel(
             self,
-            text="No Camera",
-            font=ctk.CTkFont(size=20, weight="bold"),
-            padx=0,
-            pady=0,
+            text="📷 Waiting for camera feed...\n\nIf using a Mac, ensure camera permissions are enabled:\nSystem Settings > Privacy & Security > Camera",
+            font=ctk.CTkFont(size=16),
+            padx=20,
+            pady=20,
         )
 
         # Configure the right sidebar
@@ -769,9 +809,9 @@ class CamScanApp(ctk.CTk):
 
         # Organize main frames
         self.left_sidebar_frame.grid(row=0, column=0, rowspan=4, sticky="nsew")
-        self.camera_image_widget.grid(row=0, column=1, sticky="nsew")
         self.camera_image_label.grid(row=0, column=1, sticky="nsew")
-        self.camera_image_widget.lift()
+        self.camera_image_widget.grid(row=0, column=1, sticky="nsew")
+        self.camera_image_label.lift()
         self.right_sidebar_frame.grid(row=0, column=2, rowspan=4, sticky="nsew")
 
         # Tooltips
@@ -885,20 +925,24 @@ class CamScanApp(ctk.CTk):
         """
         Capture an image from the camera and run the document detection
         algorithm on the resulting image.
-        :return:
-            A tuple consisting of the raw image, the extracted warped image, and
-            a numpy array describing the contours of the found document. If the
-            video capture could not read a frame successfully, return None.
         """
         img_capture = self.camera.capture()
+        if img_capture is None:
+            now = time.time()
+            if not hasattr(self, "_last_reinit_attempt") or (now - self._last_reinit_attempt > 2.5):
+                self._last_reinit_attempt = now
+                self.camera.initialize()
+                img_capture = self.camera.capture()
 
         if img_capture is not None:
             mode = self.var_boundary_detector.get()
             if "yolo" in mode.lower():
-                dewarped, contour = self.yolo_dewarp_engine.detect_and_dewarp(img_capture)
-                if dewarped is not None and contour is not None:
-                    return (img_capture, dewarped, contour)
-                # Fallback to OpenCV contour if YOLO detects nothing
+                try:
+                    dewarped, contour = self.yolo_dewarp_engine.detect_and_dewarp(img_capture)
+                    if dewarped is not None and contour is not None:
+                        return (img_capture, dewarped, contour)
+                except Exception as e:
+                    logging.warning(f"YOLO dewarp fallback: {e}")
 
             scan_result = scanner.main(img_capture)
             return (

@@ -13,8 +13,10 @@ import cv2
 SYSTEM = platform.system()
 if SYSTEM == "Windows":
     API_PREFERENCE = cv2.CAP_DSHOW
+elif SYSTEM == "Darwin":
+    API_PREFERENCE = cv2.CAP_AVFOUNDATION
 else:
-    API_PREFERENCE = None
+    API_PREFERENCE = cv2.CAP_ANY
 
 
 class Camera:
@@ -30,7 +32,7 @@ class Camera:
     def __init__(
         self,
         index: int = 0,
-        resolution: tuple[int, int] = (3260, 2444),
+        resolution: tuple[int, int] = (1920, 1080),
         target_fps: int = 30,
     ):
         self.index = index
@@ -44,16 +46,27 @@ class Camera:
         Initialize the camera by opening a video capture feed using settings
         like resolution and framerate specified in this instance.
         """
-        self._video_capture = cv2.VideoCapture(
-            index=self.index,
-            apiPreference=API_PREFERENCE,
-        )
-        self._video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-        self._video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
-        self._video_capture.set(cv2.CAP_PROP_FPS, self.target_fps)
+        if self._video_capture is not None:
+            try:
+                self._video_capture.release()
+            except Exception:
+                pass
+
+        if API_PREFERENCE is not None:
+            self._video_capture = cv2.VideoCapture(self.index, API_PREFERENCE)
+        else:
+            self._video_capture = cv2.VideoCapture(self.index)
 
         if not self._video_capture.isOpened():
-            logging.error("Cannot open camera")
+            self._video_capture = cv2.VideoCapture(self.index)
+
+        if self._video_capture.isOpened():
+            self._video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+            self._video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+            self._video_capture.set(cv2.CAP_PROP_FPS, self.target_fps)
+            logging.info(f"Camera {self.index} successfully opened.")
+        else:
+            logging.error(f"Cannot open camera {self.index}")
 
     def set_index(self, index: int):
         """
