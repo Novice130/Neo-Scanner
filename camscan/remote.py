@@ -125,6 +125,7 @@ class AppBridge(RemoteBridge):
             "boundary_detector": self.app.var_boundary_detector.get(),
             "auto_capture": bool(self.app.var_auto_capture.get()),
             "free_capture_mode": bool(self.app.var_free_capture_mode.get()),
+            "postprocessing_option": self.app.var_postprocessing_option.get(),
             "watched_folder": self.app.var_watched_folder.get(),
         }
 
@@ -144,6 +145,8 @@ class AppBridge(RemoteBridge):
                 self.app.var_free_capture_mode.set(
                     1 if settings["free_capture_mode"] else 0
                 )
+            if "postprocessing_option" in settings:
+                self.app.var_postprocessing_option.set(settings["postprocessing_option"])
 
         self.app.after(0, _apply)
         return settings

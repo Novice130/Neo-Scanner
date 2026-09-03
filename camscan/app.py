@@ -94,7 +94,8 @@ OCR_OPTIONS = [
 
 # Specify the supported postprocessing functions for the captured images
 POSTPROCESSING_OPTIONS = {
-    "None": postprocessing.dummy,
+    "Magic Color (CamScanner)": postprocessing.magic_color,
+    "None (Raw Natural)": postprocessing.dummy,
     "Sharpen": postprocessing.sharpen,
     "Grayscale": postprocessing.grayscale,
     "Black and White": postprocessing.black_and_white,
