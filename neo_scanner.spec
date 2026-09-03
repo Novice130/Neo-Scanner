@@ -83,3 +83,18 @@ coll = COLLECT(
     upx_exclude=[],
     name="Neo_Scanner",
 )
+
+import sys
+
+if sys.platform == "darwin":
+    app = BUNDLE(
+        coll,
+        name="Neo Scanner.app",
+        icon=None,
+        bundle_identifier="com.novice130.neo-scanner",
+        info_plist={
+            "NSCameraUsageDescription": "Neo Scanner requires camera access to scan documents.",
+            "NSHighResolutionCapable": "True",
+            "CFBundleShortVersionString": "1.0.0",
+        },
+    )
