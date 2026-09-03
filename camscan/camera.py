@@ -269,8 +269,12 @@ class Camera:
             self._video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
             self._video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
             self._video_capture.set(cv2.CAP_PROP_FPS, self.target_fps)
+            self._video_capture.set(cv2.CAP_PROP_AUTOFOCUS, 1)
             logging.info(f"Camera {self.index} ({self.device_name}) successfully opened.")
             enable_camera_autofocus(self.device_name)
+            # Warm up sensor so auto-exposure and auto-white-balance stabilize
+            for _ in range(5):
+                self._video_capture.read()
         else:
             logging.error(f"Cannot open camera {self.index}")
 
