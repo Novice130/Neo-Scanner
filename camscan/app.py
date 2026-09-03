@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder, dewarp, session, motion
+from camscan import scanner, ocr, pdf_builder, dewarp, session, motion, auto_export
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -157,6 +157,9 @@ TOOLTIPS = {
     "export_separate": "Export captures as separate files in a directory",
     "export_merged": "Export captures as a single merged file",
     "ocr_engine": "Choose OCR engine to create searchable handwriting text layer in exported PDF",
+    "watched_folder": "Directory path to auto-export finalized student sessions (e.g. OneDrive sync folder)",
+    "browse_watched_folder": "Browse and select destination watched folder",
+    "finalize_session": "Finalize current student session and auto-export to watched folder",
     # Right panel
     "select_all": "Select or deselect all captures",
     "delete": "Delete the selected captures",
@@ -422,6 +425,10 @@ class CamScanApp(ctk.CTk):
         self.var_auto_capture = tk.IntVar(value=0)
         self.var_motion_threshold = tk.StringVar(value="3.0")
         self.var_settle_time = tk.StringVar(value="0.8")
+        self.auto_exporter = auto_export.AutoExporter()
+        self.var_watched_folder = tk.StringVar(
+            value=self.auto_exporter.watched_folder
+        )
         self.var_select_all_captures = tk.IntVar(value=0)
 
         # configure window
@@ -611,6 +618,35 @@ class CamScanApp(ctk.CTk):
             command=self.export_merged_captures,
         )
 
+        # Add a section for auto-exporting to watched folder
+        self.watched_folder_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Watched Folder (OneDrive):", anchor="w"
+        )
+        self.watched_folder_frame = ctk.CTkFrame(
+            self.left_sidebar_frame, fg_color="transparent"
+        )
+        self.watched_folder_entry = ctk.CTkEntry(
+            self.watched_folder_frame,
+            textvariable=self.var_watched_folder,
+            font=ctk.CTkFont(size=11),
+        )
+        self.browse_watched_folder_button = ctk.CTkButton(
+            self.watched_folder_frame,
+            text="📁",
+            width=28,
+            command=self.browse_watched_folder,
+        )
+        self.watched_folder_entry.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.browse_watched_folder_button.pack(side=ctk.LEFT)
+
+        self.finalize_session_button = ctk.CTkButton(
+            master=self.left_sidebar_frame,
+            text="Finish & Export Session",
+            fg_color="#2e7d32",
+            hover_color="#1b5e20",
+            command=self.finalize_session,
+        )
+
         # Organize left menu items
         self.left_sidebar_title_label.pack(padx=LEFT_MENU_PAD_X, pady=20)
         self.camera_settings_label.pack(**LEFT_MENU_PACK_KWARGS)
@@ -641,6 +677,9 @@ class CamScanApp(ctk.CTk):
         self.ocr_engine_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.ocr_engine_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_merged_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
+        self.watched_folder_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.watched_folder_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.finalize_session_button.pack(padx=LEFT_MENU_PAD_X, pady=(6, 15))
 
         # Configure the central widget showing the camera feed
         self.camera_image_widget = ctk.CTkLabel(self, text=None, padx=0, pady=0)
@@ -773,6 +812,18 @@ class CamScanApp(ctk.CTk):
         widgets.Tooltip(
             widget=self.export_merged_captures_button,
             text=TOOLTIPS["export_merged"],
+        )
+        widgets.Tooltip(
+            widget=self.watched_folder_entry,
+            text=TOOLTIPS["watched_folder"],
+        )
+        widgets.Tooltip(
+            widget=self.browse_watched_folder_button,
+            text=TOOLTIPS["browse_watched_folder"],
+        )
+        widgets.Tooltip(
+            widget=self.finalize_session_button,
+            text=TOOLTIPS["finalize_session"],
         )
         # Right menu
         widgets.Tooltip(
@@ -1297,6 +1348,107 @@ class CamScanApp(ctk.CTk):
             title="Export Successful",
             message=f"{n} captures exported as {file_type} to {output_dir}",
         )
+
+    def browse_watched_folder(self):
+        """Browse and select the watched OneDrive folder."""
+        folder = tk.filedialog.askdirectory(initialdir=self.var_watched_folder.get())
+        if folder:
+            self.var_watched_folder.set(folder)
+            self.auto_exporter.set_watched_folder(folder)
+
+    def finalize_session(self):
+        """
+        Finalize the current student capture session and auto-export all pages
+        to the watched OneDrive folder, then prepare for the next student.
+        """
+        n = len(self.entries)
+        if n == 0:
+            tk.messagebox.showwarning(
+                title="No Captures",
+                message="No pages have been captured yet for this session.",
+            )
+            return
+
+        watched_dir = self.var_watched_folder.get()
+        self.auto_exporter.set_watched_folder(watched_dir)
+
+        student_tag = self.var_student_tag.get()
+        images = [entry.current_image.copy() for entry in self.entries]
+        ocr_mode = self.var_ocr_engine.get()
+        engine = ocr.get_ocr_engine(ocr_mode)
+
+        progress_dialog = ctk.CTkToplevel(self)
+        progress_dialog.title("Finalizing Session")
+        progress_dialog.geometry("450x180")
+        progress_dialog.resizable(False, False)
+        progress_dialog.attributes("-topmost", True)
+        progress_dialog.grab_set()
+
+        tag_display = student_tag if student_tag else "Untagged"
+        status_label = ctk.CTkLabel(
+            progress_dialog,
+            text=f"Auto-exporting {n} page(s) for '{tag_display}' to watched folder...",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            wraplength=400,
+        )
+        status_label.pack(padx=20, pady=(25, 10))
+
+        progressbar = ctk.CTkProgressBar(progress_dialog, width=380)
+        progressbar.pack(padx=20, pady=10)
+        progressbar.set(0.2)
+
+        def _worker():
+            try:
+                def _cb(msg):
+                    self.after(0, lambda m=msg: status_label.configure(text=m))
+
+                results = self.auto_exporter.export_session(
+                    images=images,
+                    student_tag=student_tag,
+                    ocr_engine=engine,
+                    progress_callback=_cb,
+                )
+
+                def _on_done():
+                    progress_dialog.destroy()
+                    self.delete_all_entries()
+                    self.var_student_tag.set("")
+                    pdf_path = results.get("pdf", "")
+                    tk.messagebox.showinfo(
+                        title="Session Finalized",
+                        message=(
+                            f"Session successfully finalized!\n\n"
+                            f"Exported to:\n{pdf_path}\n\n"
+                            f"Ready for next student session."
+                        ),
+                    )
+
+                self.after(0, _on_done)
+            except Exception as e:
+                logging.exception("Auto-export failed")
+                def _on_err(err=str(e)):
+                    progress_dialog.destroy()
+                    tk.messagebox.showerror(
+                        title="Auto-Export Error",
+                        message=f"Failed to auto-export session: {err}",
+                    )
+                self.after(0, _on_err)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def delete_all_entries(self):
+        """Clear all entries when a session finalizes."""
+        for entry in list(self.entries):
+            entry.frame.destroy()
+        self.entries.clear()
+        if hasattr(self, "select_all_captures_check_box"):
+            self.select_all_captures_check_box.deselect()
+        # Reset scrollbar position
+        dummy_frame = ctk.CTkFrame(master=self.scrollable_frame)
+        dummy_frame.grid(row=0, column=0)
+        self.scrollable_frame._parent_canvas.yview_moveto(0.0)
+        self.scrollable_frame.update()
+        dummy_frame.destroy()
 
     def change_postprocessing_event(self, *args):
         """
