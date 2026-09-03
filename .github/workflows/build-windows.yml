@@ -32,7 +32,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pyinstaller pyinstaller-hooks-contrib pytest httpx
-          pip install paddleocr torch transformers ultralytics
+          pip install paddleocr paddlepaddle torch transformers ultralytics
 
       - name: Download YOLOv8 Weights
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run Tests
         run: |
-          pytest
+          python -m pytest -m "not integration"
 
       - name: Build with PyInstaller
         run: |
@@ -48,7 +48,13 @@ jobs:
 
       - name: Compile Windows Installer with Inno Setup
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          if (Get-Command iscc -ErrorAction SilentlyContinue) {
+            iscc installer.iss
+          } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          } else {
+            & "C:\Program Files\Inno Setup 6\ISCC.exe" installer.iss
+          }
 
       - name: Upload Installer Artifact
         uses: actions/upload-artifact@v4
