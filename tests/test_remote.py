@@ -69,7 +69,7 @@ def test_remote_app_endpoints():
     # 1. UI Root
     res = client.get("/")
     assert res.status_code == 200
-    assert "CamScan Remote" in res.text
+    assert "Neo Scanner Remote" in res.text
 
     # 2. Status
     res = client.get("/api/status")

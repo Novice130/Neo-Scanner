@@ -4,8 +4,8 @@
 # character.
 
 [project]
-name = "camscan"
-description = "Camscan is an application for scanning documents using a camera connected to your computer."
+name = "neo-scanner"
+description = "Neo Scanner - AI-powered document scanner with handwriting OCR, page dewarping, auto-capture, and remote control."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = { file = "LICENSE.md" }
 dynamic = ["version"]

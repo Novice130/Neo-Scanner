@@ -1,114 +1,129 @@
+# Neo Scanner 📄
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Build Windows Installer](https://github.com/Novice130/Neo-Scanner/actions/workflows/build-windows.yml/badge.svg)](https://github.com/Novice130/Neo-Scanner/actions/workflows/build-windows.yml)
 
-[![Black](https://github.com/suhren/camscan/actions/workflows/format.yml/badge.svg)](https://github.com/suhren/camscan/actions/workflows/format.yml)
-[![flake8](https://github.com/suhren/camscan/actions/workflows/lint.yml/badge.svg)](https://github.com/suhren/camscan/actions/workflows/lint.yml)
-[![PyTest](https://github.com/suhren/camscan/actions/workflows/test.yml/badge.svg)](https://github.com/suhren/camscan/actions/workflows/test.yml)
+**Neo Scanner** is an AI-powered document scanner application that turns any computer with a connected camera or USB document camera into an intelligent scanning station. It features deep-learning boundary segmentation, handwriting OCR, curved notebook page dewarping, automatic page-turn capture, OneDrive watch-folder sync, and cross-continent remote control from your phone browser over Tailscale.
 
-# Camscan
+---
 
-**Camscan** is a software for scanning documents using a camera connected to your computer, like your webcam. It is fully implemented in Python, and mainly leverages [OpenCV](https://github.com/opencv/opencv-python) for the document detection algorithm, and [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) for the graphical user interface.
+## Key Features
 
-<p align="center">
-  <picture>
-    <img src="./documentation/gui.png">
-  </picture>
-</p>
+1. **Handwriting OCR & Searchable PDF Export**:
+   - Two-stage local pipeline: **PaddleOCR** line layout detection + **Hugging Face TrOCR** (`microsoft/trocr-small-handwritten`) for handwriting recognition.
+   - Optional **Google Gemini Vision LLM** fallback.
+   - Generates searchable PDFs using **PyMuPDF** with invisible, selectable text layers (`render_mode=3`).
+   - Runs in a background thread with real-time progress dialog.
 
-The functionality of the software includes, but is not limited to:
+2. **Page Dewarping Upgrade (Notebook Spine Flattening)**:
+   - Deep-learning document boundary detection via **YOLOv8** (`yolov8n-seg.pt`).
+   - Classical geometric correction using **cubic polynomial curve fitting** and **bicubic remapping (`cv2.remap`)** to flatten curved notebook pages near the spine.
+   - Original OpenCV Hough/Canny contour detection preserved as an instant toggle.
 
-- Computer-vision algorithm capable of identifying, and extracting contents of documents found through the camera
-- Ability to process two-sided documents (like books) and extract the left and right pages as a separate images
-- A fully fledged graphical user interface (no requirement of coding, setting values in config files, or using the terminal)
-- Post-processing functions of captured images, like sharpening and black and white threshold
-- Ability to re-order or remove images after capture
-- Ability to export captures:
-  - As separate files to a directory with a wide range of formats like `.png`, `.jpg`, and many others.
-  - As a concatenated `.pdf` file containing all the captures.
-  
-## Installation
+3. **Student Session Tagging**:
+   - Dedicated "Student Name / ID" field for school and grading workflows.
+   - Automatically tags all capture entries and groups exported files into `{student_tag}_{date}.pdf` and `{student_tag}_{date}/` folders instead of flat directories.
 
-You can find the latest available pre-build standalone executables for this
-software available at the [releases section in ths repo](https://github.com/suhren/camscan/releases). Simply download the version for your platform and run it.
+4. **Auto-Capture on Page Turn**:
+   - Computes low-latency frame differences on grayscale downscaled frames.
+   - Detects page-turn motion and triggers capture once motion drops below a configurable threshold and settles for a settle window (0.5–1.0s).
+   - Includes live visual motion status indicator (`Still`, `Page Turning`, `Settling...`, `Captured`) and safety cooldown.
 
-- For Windows, download `camscan-windows.exe` file and run it by double-clicking it
-- For Linux, download `camscan-linux`. Then open a terminal and navigate to the file. Make it executable with `chmod +x camscan-linux`, then run it with `./camscan-linux`
+5. **Auto-Export to Watched Folder (OneDrive Sync)**:
+   - Configurable watched folder (defaults to local OneDrive sync directory `~/OneDrive/CamScan`).
+   - One-click **"Finish & Export Session"** action that auto-exports the session PDF and clears the capture list, ready for the next student.
 
-## Running as a Python module
+6. **Remote Control over Tailscale**:
+   - Built-in **FastAPI** daemon server on port `8000`.
+   - Low-latency **MJPEG live video stream** (`/api/feed`) and snapshot fallback (`/api/snapshot`).
+   - Mobile-first web app accessible from phone browsers across continents over Tailscale:
+     - Live video stream with tactile big **CAPTURE** button.
+     - Student session input and live thumbnail strip.
+     - Mode toggles (two-page, YOLO dewarp, auto-capture).
+     - Remote session finalize action.
 
-You can also run the camera scanner application as a Python module using your own environment.
+---
 
-## Using conda
+## Installation & Download
 
-You can set up a conda environment using the below commands:
+### Windows (Recommended)
+Download the latest **`Neo_Scanner-Setup.exe`** from the [Releases page](https://github.com/Novice130/Neo-Scanner/releases). Double-click the installer and follow the wizard to install Neo Scanner with desktop and Start Menu shortcuts.
 
+### Running from Source
+
+#### Prerequisites
+- Python 3.11
+- Tkinter (`python-tk`)
+- Webcam or USB document camera
+
+#### Setup
 ```bash
-conda create -n camscan python=3.11
-conda activate camscan
-pip install -r requirements_PLATFORM.txt
-python -m camscan.app
+# Clone repository
+git clone https://github.com/Novice130/Neo-Scanner.git
+cd Neo-Scanner
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -e .
+pip install paddleocr torch transformers ultralytics
+
+# Launch Neo Scanner Desktop GUI
+python camscan/main.py
 ```
 
-**NOTE**: Using anaconda or miniconda only linux will lead to some rendering problems with the TkInter GUI components. Therefore, it is recommended to not use anaconda or miniconda when creating your python environment when using linux. Instead, you can simply install the required Python version yourself, or use another solution like "pyenv" (see further down).
+---
 
-See the following threads on the subject:
+## Remote Control Usage (Phone over Tailscale)
 
-- <https://github.com/TomSchimansky/CustomTkinter/issues/1400>
-- <https://stackoverflow.com/questions/49187741/tkinter-looks-extremely-ugly-in-linux>
-- <https://github.com/ContinuumIO/anaconda-issues/issues/6833>
+1. Connect the host PC running Neo Scanner to your [Tailscale](https://tailscale.com/) network.
+2. In the Neo Scanner left sidebar, make sure **Remote Control** is enabled (it runs on port `8000`).
+3. On your phone (connected to the same Tailscale network), open your browser and navigate to:
+   ```
+   http://<host-tailscale-ip>:8000
+   ```
+4. Enter the student's name/ID, watch the live camera feed, tap **CAPTURE** for each page, and tap **Finish Session** when done. The scanned document will automatically save to the host's watched OneDrive folder!
 
-## Using pyenv
+---
 
-### Installing pyenv
+## Building the Windows Executable Locally
 
-```bash
-# Instructions taken from the pyenv installation guide:
-# https://github.com/pyenv/pyenv?tab=readme-ov-file#linuxunix
+To compile the standalone Windows executable and installer yourself:
 
-# Required to download the pyenv installer
-sudo apt install curl
+```cmd
+# 1. Install PyInstaller and Inno Setup
+pip install pyinstaller pyinstaller-hooks-contrib
+choco install innosetup
 
-# Install Pyhon build dependencies
-sudo apt update
-sudo apt install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl git libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev libzstd-dev
+# 2. Build with PyInstaller
+pyinstaller neo_scanner.spec
 
-# Download and install pyenv 
-curl -fsSL https://pyenv.run | bash
-
-# Set up your .bashrc file to make pyenv avialable in the shell 
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-echo 'eval "$(pyenv init - bash)"' >> ~/.bashrc
-
-# Update the shell environment
-source ~/.bashrc
+# 3. Compile Windows Installer with Inno Setup
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
+The resulting installer will be located in `dist/Neo_Scanner-Setup-v1.0.0.exe`.
 
-### Creating a pyenv environment
+---
 
-```bash
-pyenv install 3.11
-pyenv shell 3.11
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements_PLATFORM.txt
-```
+## Credits & Acknowledgments
 
-## Build instructions
+Neo Scanner builds upon and integrates the remarkable work of several open-source projects:
 
-Build the software as a standalone application using the following commands.
+- **Original Base Architecture**: [CamScan](https://github.com/suhren/camscan) by **Adam Suhren Gustafsson** ([@suhren](https://github.com/suhren)), providing the foundational OpenCV webcam document scanning loop and CustomTkinter structure.
+- **Document Boundary Segmentation**: [YOLOv8](https://github.com/ultralytics/ultralytics) by **Ultralytics**.
+- **Handwriting Text Line Layout**: [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) by **Baidu PaddlePaddle**.
+- **Handwritten Text Recognition**: [TrOCR](https://huggingface.co/microsoft/trocr-small-handwritten) by **Microsoft Research** & **Hugging Face**.
+- **Graphical User Interface**: [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) by **Tom Schimansky**.
+- **Searchable PDF Generation**: [PyMuPDF](https://github.com/pymupdf/PyMuPDF) by **Artifex Software**.
+- **Remote Web Server**: [FastAPI](https://fastapi.tiangolo.com/) by **Sebastián Ramírez** ([@tiangolo](https://github.com/tiangolo)) and [Uvicorn](https://www.uvicorn.org/).
 
-Some notes:
+---
 
-- To build the application as an executable, you need to also ensure that the "pyinstaller" python module has ben installed.
-- Some imports required by the application might not be collected properly by pyinstaller. To fix this, provide them as "hidden" imports. See [this stackoverflow thread](https://stackoverflow.com/questions/52675162/pyinstaller-doesnt-play-well-with-imagetk-and-tkinter) on the subject
+## License
 
-```bash
-# If you are building on Windows
-pyinstaller --onefile --name camscan-windows camscan/app.py --hidden-import "PIL" --hidden-import "PIL._imagingtk" --hidden-import "PIL._tkinter_finder"
-# If you are building on Linux
-pyinstaller --onefile --name camscan-linux camscan/app.py --hidden-import "PIL" --hidden-import "PIL._imagingtk" --hidden-import "PIL._tkinter_finder"
-```
-
-and then find the resulting executable file in `dist/camscan-windows.exe` for Windows, or `dist/camscan-linux` for Linux.
+This project is licensed under the [MIT License](LICENSE.md).
+Original CamScan copyright &copy; 2023 Adam Suhren Gustafsson.
+Neo Scanner extensions and contributions &copy; 2026 Neo Scanner Contributors.

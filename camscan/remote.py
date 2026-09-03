@@ -199,7 +199,7 @@ MOBILE_UI_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>CamScan Remote Control</title>
+  <title>Neo Scanner Remote Control</title>
   <style>
     :root {
       --bg: #121212;
@@ -325,7 +325,7 @@ MOBILE_UI_HTML = """<!DOCTYPE html>
   <header>
     <div class="brand">
       <span>📄</span>
-      <span>CamScan Remote</span>
+      <span>Neo Scanner Remote</span>
     </div>
     <div class="badge" id="conn-badge">
       <span class="badge-dot"></span>
@@ -585,7 +585,7 @@ def create_remote_app(bridge: RemoteBridge) -> "FastAPI":
     if FastAPI is None:
         raise RuntimeError("fastapi is not installed. Please install fastapi and uvicorn.")
 
-    app = FastAPI(title="CamScan Remote", version="1.0.0")
+    app = FastAPI(title="Neo Scanner Remote", version="1.0.0")
 
     @app.get("/", response_class=HTMLResponse)
     async def index_page():

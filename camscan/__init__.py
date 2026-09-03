@@ -1,3 +1,3 @@
-__version__ = "0.2.1"
-__app_name__ = "camscan"
-__app_display_name__ = "CamScan"
+__version__ = "1.0.0"
+__app_name__ = "neo_scanner"
+__app_display_name__ = "Neo Scanner"
