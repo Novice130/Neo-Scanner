@@ -993,10 +993,36 @@ class CamScanApp(ctk.CTk):
             max_width = max(max_width, win_w - 620, 640)
             max_height = max(max_height, win_h - 40, 480)
 
-        # Capture an image and the resulting detected contour from the camera
-        raw_image, _, contour = self.capture()
+        # Grab raw camera frame directly (instantaneous)
+        raw_image = self.camera.capture()
+        if raw_image is None:
+            now = time.time()
+            if not hasattr(self, "_last_reinit_attempt") or (now - self._last_reinit_attempt > 2.5):
+                self._last_reinit_attempt = now
+                self.camera.initialize()
+                raw_image = self.camera.capture()
 
         if raw_image is not None:
+            # Ultra-fast lightweight boundary detection on downscaled thumbnail every 3 frames (~10fps)
+            if not hasattr(self, "_frame_counter"):
+                self._frame_counter = 0
+                self._cached_contour = None
+            self._frame_counter += 1
+
+            if self._frame_counter % 3 == 0 or self._cached_contour is None:
+                th_h, th_w = 180, 240
+                h_orig, w_orig = raw_image.shape[:2]
+                small = cv2.resize(raw_image, (th_w, th_h), interpolation=cv2.INTER_NEAREST)
+                small_box = scanner.find_paper_contour_adaptive(small)
+                if small_box is not None:
+                    scale_x = w_orig / float(th_w)
+                    scale_y = h_orig / float(th_h)
+                    self._cached_contour = (small_box * [scale_x, scale_y]).astype(np.int32)
+                else:
+                    self._cached_contour = None
+
+            contour = self._cached_contour
+
             # Auto-capture on page turn processing if enabled
             if self.var_auto_capture.get():
                 try:
@@ -1037,8 +1063,12 @@ class CamScanApp(ctk.CTk):
                         text_color="#9C27B0",
                     )
 
-                if should_trigger:
-                    self.capture_image()
+                if should_trigger and not getattr(self, "_is_capturing", False):
+                    self._is_capturing = True
+                    try:
+                        self.capture_image()
+                    finally:
+                        self._is_capturing = False
             else:
                 self.motion_status_label.configure(
                     text="Auto-capture: Off",
