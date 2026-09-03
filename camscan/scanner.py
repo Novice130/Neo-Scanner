@@ -349,6 +349,46 @@ def find_best_contour(
     return best_contour, best_mask
 
 
+def auto_deskew(image: np.ndarray) -> np.ndarray:
+    """
+    Detects dominant text line angles using horizontal morphology and rotates
+    the document so lines are level and horizontal.
+    """
+    try:
+        h, w = image.shape[:2]
+        small = cv2.resize(image, (640, int(640 * h / w))) if w > 640 else image
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY) if len(small.shape) == 3 else small
+        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 3))
+        dilated = cv2.morphologyEx(thresh, cv2.MORPH_DILATE, kernel)
+        cnts, _ = cv2.findContours(dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        angles = []
+        for c in cnts:
+            if cv2.contourArea(c) > 200:
+                rect = cv2.minAreaRect(c)
+                angle = rect[-1]
+                if angle < -45:
+                    angle = -(90 + angle)
+                else:
+                    angle = -angle
+                if abs(angle) < 25:
+                    angles.append(angle)
+        if angles:
+            median_angle = float(np.median(angles))
+            if abs(median_angle) > 0.4:
+                M = cv2.getRotationMatrix2D((w // 2, h // 2), median_angle, 1.0)
+                return cv2.warpAffine(
+                    image,
+                    M,
+                    (w, h),
+                    flags=cv2.INTER_CUBIC,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
+    except Exception:
+        pass
+    return image
+
+
 def extract_contour(
     image: cv2.Mat,
     contour: list[tuple[int, int]],
@@ -375,6 +415,7 @@ def extract_contour(
         M=cv2.getPerspectiveTransform(src=src, dst=dst.astype(np.float32)),
         dsize=(int(w), int(h)),
     )
+    warped = auto_deskew(warped)
     return warped, ordered_contour
 
 

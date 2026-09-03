@@ -92,6 +92,9 @@ def cubic_geometric_dewarp(
         borderMode=cv2.BORDER_REPLICATE,
     )
 
+    from camscan.scanner import auto_deskew
+
+    dewarped = auto_deskew(dewarped)
     return dewarped
 
 
