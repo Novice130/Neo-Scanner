@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner
+from camscan import scanner, ocr, pdf_builder
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -82,6 +82,13 @@ EXPORT_MERGED_FILE_TYPES = [
     "pdf",
 ]
 
+# Supported OCR engines for searchable PDF export
+OCR_OPTIONS = [
+    "PaddleOCR + TrOCR (Handwriting)",
+    "Vision LLM API",
+    "None (No OCR)",
+]
+
 # Specify the supported postprocessing functions for the captured images
 POSTPROCESSING_OPTIONS = {
     "None": postprocessing.dummy,
@@ -126,6 +133,7 @@ TOOLTIPS = {
     ),
     "export_separate": "Export captures as separate files in a directory",
     "export_merged": "Export captures as a single merged file",
+    "ocr_engine": "Choose OCR engine to create searchable handwriting text layer in exported PDF",
     # Right panel
     "select_all": "Select or deselect all captures",
     "delete": "Delete the selected captures",
@@ -377,6 +385,7 @@ class CamScanApp(ctk.CTk):
         self.var_separate_captures_file_type = tk.StringVar(
             value=EXPORT_SEPARATE_FILE_TYPES[0]
         )
+        self.var_ocr_engine = tk.StringVar(value=OCR_OPTIONS[0])
         self.var_select_all_captures = tk.IntVar(value=0)
 
         # configure window
@@ -492,6 +501,14 @@ class CamScanApp(ctk.CTk):
             variable=self.var_merged_captures_file_type,
             state="readonly",
         )
+        self.ocr_engine_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="OCR Engine (PDF):", anchor="w"
+        )
+        self.ocr_engine_option_menu = ctk.CTkOptionMenu(
+            master=self.left_sidebar_frame,
+            values=OCR_OPTIONS,
+            variable=self.var_ocr_engine,
+        )
         self.export_merged_captures_button = ctk.CTkButton(
             master=self.left_sidebar_frame,
             text="Export merged file",
@@ -518,6 +535,8 @@ class CamScanApp(ctk.CTk):
         self.export_separate_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_merged_captures_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_merged_captures_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+        self.ocr_engine_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.ocr_engine_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_merged_captures_button.pack(**LEFT_MENU_PACK_KWARGS)
 
         # Configure the central widget showing the camera feed
@@ -623,6 +642,10 @@ class CamScanApp(ctk.CTk):
         widgets.Tooltip(
             widget=self.export_separate_captures_button,
             text=TOOLTIPS["export_separate"],
+        )
+        widgets.Tooltip(
+            widget=self.ocr_engine_option_menu,
+            text=TOOLTIPS["ocr_engine"],
         )
         widgets.Tooltip(
             widget=self.export_merged_captures_button,
@@ -905,24 +928,149 @@ class CamScanApp(ctk.CTk):
         if not file_path:
             return
 
-        # Convert the captured OpenCV images to PIL images
-        images = [opencv_to_pil_image(entry.current_image) for entry in self.entries]
+        raw_images = [entry.current_image.copy() for entry in self.entries]
+        ocr_mode = self.var_ocr_engine.get()
+        engine = ocr.get_ocr_engine(ocr_mode)
 
-        # The PIL save functionality requires that we initiate it from a single
-        # image, then append the remaining images as function parameter
-        first_image = images[0]
-        remaining_images = images[1:]
-        first_image.save(
-            file_path,
-            save_all=True,
-            append_images=remaining_images,
-        )
+        if file_type.lower() == "pdf":
+            if engine is None:
+                pdf_builder.create_searchable_pdf(
+                    images=raw_images,
+                    ocr_results=None,
+                    output_path=file_path,
+                )
+                tk.messagebox.showinfo(
+                    title="Export Successful",
+                    message=f"{n} captures exported as {file_type} to {file_path}",
+                )
+            else:
+                self._export_pdf_with_ocr(
+                    images=raw_images,
+                    engine=engine,
+                    output_path=file_path,
+                    total_pages=n,
+                )
+        else:
+            # Fallback for non-PDF merged formats
+            images = [opencv_to_pil_image(entry.current_image) for entry in self.entries]
+            first_image = images[0]
+            remaining_images = images[1:]
+            first_image.save(
+                file_path,
+                save_all=True,
+                append_images=remaining_images,
+            )
+            tk.messagebox.showinfo(
+                title="Export Successful",
+                message=f"{n} captures exported as {file_type} to {file_path}",
+            )
 
-        # Show a message box indicating to the user that the export succeeded
-        tk.messagebox.showinfo(
-            title="Export Successful",
-            message=f"{n} captures exported as {file_type} to {file_path}",
+    def _export_pdf_with_ocr(
+        self,
+        images: list[np.ndarray],
+        engine: ocr.BaseOCREngine,
+        output_path: str,
+        total_pages: int,
+    ):
+        """
+        Run OCR on images and export searchable PDF in a background thread to keep UI responsive.
+        """
+        import threading
+
+        progress_dialog = ctk.CTkToplevel(self)
+        progress_dialog.title("Exporting Searchable PDF")
+        progress_dialog.geometry("460x200")
+        progress_dialog.resizable(False, False)
+        progress_dialog.attributes("-topmost", True)
+        progress_dialog.grab_set()
+
+        status_label = ctk.CTkLabel(
+            progress_dialog,
+            text=f"Starting handwriting OCR on {total_pages} page(s)...",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            wraplength=420,
         )
+        status_label.pack(padx=20, pady=(25, 10))
+
+        detail_label = ctk.CTkLabel(
+            progress_dialog,
+            text="Initializing OCR engine...",
+            font=ctk.CTkFont(size=12),
+            wraplength=420,
+        )
+        detail_label.pack(padx=20, pady=(0, 15))
+
+        progressbar = ctk.CTkProgressBar(progress_dialog, width=400)
+        progressbar.pack(padx=20, pady=10)
+        progressbar.set(0)
+
+        def _worker():
+            ocr_results = []
+            try:
+                for idx, img in enumerate(images):
+                    page_num = idx + 1
+                    frac = idx / total_pages
+                    self.after(
+                        0,
+                        lambda p=page_num, f=frac: (
+                            status_label.configure(
+                                text=f"Processing Page {p}/{total_pages}..."
+                            ),
+                            progressbar.set(f),
+                        ),
+                    )
+
+                    def _progress_cb(msg: str, p=page_num):
+                        self.after(
+                            0,
+                            lambda m=msg, p=page_num: detail_label.configure(
+                                text=f"Page {p}/{total_pages}: {m}"
+                            ),
+                        )
+
+                    lines = engine.recognize(img, progress_callback=_progress_cb)
+                    ocr_results.append(lines)
+
+                self.after(
+                    0,
+                    lambda: (
+                        status_label.configure(text="Generating Searchable PDF..."),
+                        detail_label.configure(text="Embedding text layers..."),
+                        progressbar.set(0.95),
+                    ),
+                )
+
+                pdf_builder.create_searchable_pdf(
+                    images=images,
+                    ocr_results=ocr_results,
+                    output_path=output_path,
+                )
+
+                def _on_success():
+                    progress_dialog.destroy()
+                    tk.messagebox.showinfo(
+                        title="Export Successful",
+                        message=(
+                            f"{total_pages} captures exported as searchable PDF "
+                            f"with handwriting OCR to {output_path}"
+                        ),
+                    )
+
+                self.after(0, _on_success)
+
+            except Exception as exc:
+                logging.exception("Failed during OCR export")
+
+                def _on_error(err=str(exc)):
+                    progress_dialog.destroy()
+                    tk.messagebox.showerror(
+                        title="OCR Export Error",
+                        message=f"OCR or PDF export failed: {err}",
+                    )
+
+                self.after(0, _on_error)
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def export_separate_captures(self):
         """
