@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder
+from camscan import scanner, ocr, pdf_builder, dewarp
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -112,6 +112,12 @@ RESOLUTIONS = [
     "640x480",
 ]
 
+# Supported boundary detection and dewarping algorithms
+BOUNDARY_DETECTION_OPTIONS = [
+    "YOLOv8 + Geometric Dewarp",
+    "Classic Contour (OpenCV)",
+]
+
 # Collection of tooltip strings shown for various widgets
 TOOLTIPS = {
     # Left panel
@@ -120,6 +126,10 @@ TOOLTIPS = {
     ),
     "camera_driver_settings": (
         "Open camera driver settings dialog (determined by the selected camera)"
+    ),
+    "boundary_detector": (
+        "Select document boundary detector: YOLOv8 with cubic polynomial dewarping "
+        "for curved notebook spines, or Classic OpenCV contour detection."
     ),
     "postprocessing": "Set the postprocessing effect applied to the captured images",
     "system_appearance": "Set the user interface appearance of the application",
@@ -386,6 +396,10 @@ class CamScanApp(ctk.CTk):
             value=EXPORT_SEPARATE_FILE_TYPES[0]
         )
         self.var_ocr_engine = tk.StringVar(value=OCR_OPTIONS[0])
+        self.yolo_dewarp_engine = dewarp.YOLODewarpEngine()
+        self.var_boundary_detector = tk.StringVar(
+            value=BOUNDARY_DETECTION_OPTIONS[0]
+        )
         self.var_select_all_captures = tk.IntVar(value=0)
 
         # configure window
@@ -454,6 +468,16 @@ class CamScanApp(ctk.CTk):
             command=change_ui_scaling_event,
         )
         self.scaling_option_menu.set("100%")
+
+        # Add boundary detector selection
+        self.boundary_detector_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Boundary Detector:", anchor="w"
+        )
+        self.boundary_detector_option_menu = ctk.CTkOptionMenu(
+            self.left_sidebar_frame,
+            values=BOUNDARY_DETECTION_OPTIONS,
+            variable=self.var_boundary_detector,
+        )
 
         # Add a button for capturing the screen
         self.capture_image_label = ctk.CTkLabel(
@@ -526,6 +550,8 @@ class CamScanApp(ctk.CTk):
         self.appearance_mode_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.scaling_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.scaling_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+        self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.boundary_detector_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.capture_image_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
         self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
@@ -628,6 +654,10 @@ class CamScanApp(ctk.CTk):
             text=TOOLTIPS["system_ui_scaling"],
         )
         widgets.Tooltip(
+            widget=self.boundary_detector_option_menu,
+            text=TOOLTIPS["boundary_detector"],
+        )
+        widgets.Tooltip(
             widget=self.free_capture_setting_check_box,
             text=TOOLTIPS["free_capture_mode"],
         )
@@ -678,6 +708,13 @@ class CamScanApp(ctk.CTk):
         img_capture = self.camera.capture()
 
         if img_capture is not None:
+            mode = self.var_boundary_detector.get()
+            if "yolo" in mode.lower():
+                dewarped, contour = self.yolo_dewarp_engine.detect_and_dewarp(img_capture)
+                if dewarped is not None and contour is not None:
+                    return (img_capture, dewarped, contour)
+                # Fallback to OpenCV contour if YOLO detects nothing
+
             scan_result = scanner.main(img_capture)
             return (
                 img_capture,
