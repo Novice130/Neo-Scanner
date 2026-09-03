@@ -76,7 +76,11 @@ class AutoExporter:
                         progress_callback(
                             f"Auto-export: OCR on page {idx + 1}/{len(images)}..."
                         )
-                    lines = ocr_engine.recognize(img)
+                    try:
+                        lines = ocr_engine.recognize(img)
+                    except Exception as e:
+                        logger.warning(f"OCR failed on page {idx + 1}: {e}")
+                        lines = []
                     ocr_results.append(lines)
 
             if progress_callback:

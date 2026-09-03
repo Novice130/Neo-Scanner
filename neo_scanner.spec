@@ -57,6 +57,22 @@ datas += ul_datas
 binaries += ul_binaries
 hiddenimports += ul_hidden
 
+try:
+    px_datas, px_binaries, px_hidden = collect_all("paddlex")
+    datas += px_datas
+    binaries += px_binaries
+    hiddenimports += px_hidden
+except Exception:
+    pass
+
+try:
+    po_datas, po_binaries, po_hidden = collect_all("paddleocr")
+    datas += po_datas
+    binaries += po_binaries
+    hiddenimports += po_hidden
+except Exception:
+    pass
+
 a = Analysis(
     ["camscan/main.py"],
     pathex=["."],

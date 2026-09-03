@@ -58,9 +58,12 @@ class PaddleOCRFastEngine(BaseOCREngine):
     def _init_models(self):
         if self._paddle_ocr is None:
             logger.info("Initializing PaddleOCR Fast pipeline for books & documents...")
-            from paddleocr import PaddleOCR
-
-            self._paddle_ocr = PaddleOCR(use_angle_cls=True, lang="en")
+            try:
+                from paddleocr import PaddleOCR
+                self._paddle_ocr = PaddleOCR()
+            except Exception as e:
+                logger.warning(f"PaddleOCR Fast initialization failed: {e}")
+                self._paddle_ocr = None
 
     def recognize(
         self,
@@ -68,6 +71,9 @@ class PaddleOCRFastEngine(BaseOCREngine):
         progress_callback: t.Optional[t.Callable[[str], None]] = None,
     ) -> list[TextLine]:
         self._init_models()
+        if self._paddle_ocr is None:
+            return []
+
         if progress_callback:
             progress_callback("Running PaddleOCR Fast recognition...")
 
