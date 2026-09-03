@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder, dewarp, session
+from camscan import scanner, ocr, pdf_builder, dewarp, session, motion
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -134,6 +134,15 @@ TOOLTIPS = {
     "student_tag": (
         "Enter student name or ID to tag captures and group exported files/folders "
         "by student and date."
+    ),
+    "auto_capture": (
+        "Automatically trigger capture when a page turn finishes and the document settles"
+    ),
+    "motion_threshold": (
+        "Sensitivity threshold for detecting page turns (percentage of frame changed)"
+    ),
+    "settle_time": (
+        "Window in seconds motion must stay below threshold before capture triggers"
     ),
     "postprocessing": "Set the postprocessing effect applied to the captured images",
     "system_appearance": "Set the user interface appearance of the application",
@@ -405,6 +414,14 @@ class CamScanApp(ctk.CTk):
             value=BOUNDARY_DETECTION_OPTIONS[0]
         )
         self.var_student_tag = tk.StringVar(value="")
+        self.page_turn_detector = motion.PageTurnDetector(
+            motion_threshold=3.0,
+            settle_time_s=0.8,
+            cooldown_s=2.0,
+        )
+        self.var_auto_capture = tk.IntVar(value=0)
+        self.var_motion_threshold = tk.StringVar(value="3.0")
+        self.var_settle_time = tk.StringVar(value="0.8")
         self.var_select_all_captures = tk.IntVar(value=0)
 
         # configure window
@@ -508,6 +525,46 @@ class CamScanApp(ctk.CTk):
             text="Free Capture Mode",
             variable=self.var_free_capture_mode,
         )
+        # Auto-capture on page turn controls
+        self.auto_capture_check_box = ctk.CTkCheckBox(
+            self.left_sidebar_frame,
+            text="Auto-capture on Turn",
+            variable=self.var_auto_capture,
+        )
+        self.motion_settings_frame = ctk.CTkFrame(
+            self.left_sidebar_frame, fg_color="transparent"
+        )
+        self.motion_threshold_label = ctk.CTkLabel(
+            self.motion_settings_frame, text="Thresh%:", font=ctk.CTkFont(size=11)
+        )
+        self.motion_threshold_entry = ctk.CTkEntry(
+            self.motion_settings_frame,
+            width=45,
+            height=24,
+            font=ctk.CTkFont(size=11),
+            textvariable=self.var_motion_threshold,
+        )
+        self.settle_time_label = ctk.CTkLabel(
+            self.motion_settings_frame, text="Settle(s):", font=ctk.CTkFont(size=11)
+        )
+        self.settle_time_entry = ctk.CTkEntry(
+            self.motion_settings_frame,
+            width=45,
+            height=24,
+            font=ctk.CTkFont(size=11),
+            textvariable=self.var_settle_time,
+        )
+        self.motion_threshold_label.pack(side=ctk.LEFT, padx=(0, 2))
+        self.motion_threshold_entry.pack(side=ctk.LEFT, padx=(0, 6))
+        self.settle_time_label.pack(side=ctk.LEFT, padx=(0, 2))
+        self.settle_time_entry.pack(side=ctk.LEFT)
+
+        self.motion_status_label = ctk.CTkLabel(
+            self.left_sidebar_frame,
+            text="Auto-capture: Off",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="gray",
+        )
         self.capture_image_button = ctk.CTkButton(
             self.left_sidebar_frame,
             text="Capture",
@@ -572,6 +629,9 @@ class CamScanApp(ctk.CTk):
         self.capture_image_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
         self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.auto_capture_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.motion_settings_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.motion_status_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.capture_image_button.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_separate_captures_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.export_separate_captures_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
@@ -687,6 +747,18 @@ class CamScanApp(ctk.CTk):
             text=TOOLTIPS["two_page_mode"],
         )
         widgets.Tooltip(
+            widget=self.auto_capture_check_box,
+            text=TOOLTIPS["auto_capture"],
+        )
+        widgets.Tooltip(
+            widget=self.motion_threshold_entry,
+            text=TOOLTIPS["motion_threshold"],
+        )
+        widgets.Tooltip(
+            widget=self.settle_time_entry,
+            text=TOOLTIPS["settle_time"],
+        )
+        widgets.Tooltip(
             widget=self.capture_image_button,
             text=TOOLTIPS["capture"],
         )
@@ -764,6 +836,54 @@ class CamScanApp(ctk.CTk):
         raw_image, _, contour = self.capture()
 
         if raw_image is not None:
+            # Auto-capture on page turn processing if enabled
+            if self.var_auto_capture.get():
+                try:
+                    self.page_turn_detector.motion_threshold = float(
+                        self.var_motion_threshold.get()
+                    )
+                except ValueError:
+                    pass
+                try:
+                    self.page_turn_detector.settle_time_s = float(
+                        self.var_settle_time.get()
+                    )
+                except ValueError:
+                    pass
+
+                should_trigger, motion_score, motion_state = (
+                    self.page_turn_detector.process_frame(raw_image)
+                )
+
+                if motion_state == motion.PageTurnDetector.STATE_IDLE:
+                    self.motion_status_label.configure(
+                        text=f"Status: Still ({motion_score:.1f}%)",
+                        text_color="#4CAF50",
+                    )
+                elif motion_state == motion.PageTurnDetector.STATE_MOTION:
+                    self.motion_status_label.configure(
+                        text=f"Status: Page Turning ({motion_score:.1f}%)",
+                        text_color="#FF9800",
+                    )
+                elif motion_state == motion.PageTurnDetector.STATE_SETTLING:
+                    self.motion_status_label.configure(
+                        text=f"Status: Settling... ({motion_score:.1f}%)",
+                        text_color="#2196F3",
+                    )
+                elif motion_state == motion.PageTurnDetector.STATE_COOLDOWN:
+                    self.motion_status_label.configure(
+                        text="Status: Captured (Cooldown)",
+                        text_color="#9C27B0",
+                    )
+
+                if should_trigger:
+                    self.capture_image()
+            else:
+                self.motion_status_label.configure(
+                    text="Auto-capture: Off",
+                    text_color="gray",
+                )
+
             # Apply the current postprocessing to the image before displaying
             postprocessing_option = self.var_postprocessing_option.get()
             postprocessing_function = POSTPROCESSING_OPTIONS[postprocessing_option]
