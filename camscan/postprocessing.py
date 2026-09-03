@@ -60,6 +60,8 @@ def black_and_white(image: cv2.Mat) -> cv2.Mat:
         adaptiveMethod=cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         thresholdType=cv2.THRESH_BINARY,
         blockSize=21,
+        C=15,
+    )
     return thresholded
 
 

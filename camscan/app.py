@@ -1008,6 +1008,8 @@ class CamScanApp(ctk.CTk):
             if not hasattr(self, "_frame_counter"):
                 self._frame_counter = 0
                 self._cached_contour = None
+                self._smooth_contour = None
+                self._contour_missing_frames = 0
             self._frame_counter += 1
 
             if self._frame_counter % 3 == 0 or self._cached_contour is None:
@@ -1015,14 +1017,42 @@ class CamScanApp(ctk.CTk):
                 h_orig, w_orig = raw_image.shape[:2]
                 small = cv2.resize(raw_image, (th_w, th_h), interpolation=cv2.INTER_NEAREST)
                 small_box = scanner.find_paper_contour_adaptive(small)
+
+                # Check if small_box is a plausible document (not full screen edge >90%)
+                is_valid_doc = False
                 if small_box is not None:
+                    area = cv2.contourArea(small_box)
+                    total_area = th_h * th_w
+                    if 0.08 * total_area < area < 0.88 * total_area:
+                        is_valid_doc = True
+
+                if is_valid_doc:
                     scale_x = w_orig / float(th_w)
                     scale_y = h_orig / float(th_h)
-                    self._cached_contour = (small_box * [scale_x, scale_y]).astype(np.int32)
+                    new_contour = (small_box * [scale_x, scale_y]).astype(np.float32)
+                    if self._smooth_contour is None:
+                        self._smooth_contour = new_contour
+                    else:
+                        # EMA temporal smoothing eliminates vibration/jitter
+                        self._smooth_contour = 0.65 * self._smooth_contour + 0.35 * new_contour
+                    self._cached_contour = self._smooth_contour.astype(np.int32)
+                    self._contour_missing_frames = 0
                 else:
-                    self._cached_contour = None
+                    self._contour_missing_frames += 1
+                    # If paper is lost for >5 cycles (~0.5s), gracefully clear so no flashing border
+                    if self._contour_missing_frames > 5:
+                        self._cached_contour = None
+                        self._smooth_contour = None
 
             contour = self._cached_contour
+
+            # Calculate real-time image sharpness (Laplacian variance on central region)
+            ch, cw = raw_image.shape[:2]
+            sample_gray = cv2.cvtColor(
+                raw_image[ch // 4 : 3 * ch // 4, cw // 4 : 3 * cw // 4],
+                cv2.COLOR_BGR2GRAY,
+            )
+            focus_score = cv2.Laplacian(sample_gray, cv2.CV_64F).var()
 
             # Auto-capture on page turn processing if enabled
             if self.var_auto_capture.get():
@@ -1050,21 +1080,30 @@ class CamScanApp(ctk.CTk):
                     )
                 elif motion_state == motion.PageTurnDetector.STATE_MOTION:
                     self.motion_status_label.configure(
-                        text=f"Status: Page Turning ({motion_score:.1f}%)",
+                        text=f"Status: Moving ({motion_score:.1f}%)",
                         text_color="#FF9800",
                     )
                 elif motion_state == motion.PageTurnDetector.STATE_SETTLING:
-                    self.motion_status_label.configure(
-                        text=f"Status: Settling... ({motion_score:.1f}%)",
-                        text_color="#2196F3",
-                    )
+                    if focus_score < 65.0:
+                        self.motion_status_label.configure(
+                            text=f"Status: Focusing... ({focus_score:.0f})",
+                            text_color="#FF9800",
+                        )
+                        # Camera is still hunting focus; do not capture blur
+                        should_trigger = False
+                    else:
+                        self.motion_status_label.configure(
+                            text=f"Status: Sharp & Settling ({focus_score:.0f})",
+                            text_color="#2196F3",
+                        )
                 elif motion_state == motion.PageTurnDetector.STATE_COOLDOWN:
                     self.motion_status_label.configure(
                         text="Status: Captured (Cooldown)",
                         text_color="#9C27B0",
                     )
 
-                if should_trigger and not getattr(self, "_is_capturing", False):
+                # Only snap when motion settled AND image is confirmed sharp
+                if should_trigger and focus_score >= 65.0 and not getattr(self, "_is_capturing", False):
                     self._is_capturing = True
                     try:
                         self.capture_image()
@@ -1072,19 +1111,15 @@ class CamScanApp(ctk.CTk):
                         self._is_capturing = False
             else:
                 self.motion_status_label.configure(
-                    text="Auto-capture: Off",
+                    text=f"Auto-capture: Off (Focus: {focus_score:.0f})",
                     text_color="gray",
                 )
 
-            # Apply the current postprocessing to the image before displaying
-            postprocessing_option = self.var_postprocessing_option.get()
-            postprocessing_function = POSTPROCESSING_OPTIONS[postprocessing_option]
-            image = postprocessing_function(raw_image)
-            # The image must have three color channels, so convert if needed
-            if len(image.shape) == 2:
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-            # If we are using the 'Free Capture' mode, skip drawing the contour
-            if not self.var_free_capture_mode.get():
+            # Live preview always displays clean, natural color 60fps video
+            image = raw_image.copy()
+
+            # Draw boundary box only when a valid paper was detected
+            if not self.var_free_capture_mode.get() and contour is not None:
                 image = utils.draw_contour(image=image, contour=contour)
             self._latest_preview_frame = image.copy()
             # Convert the OpenCV image to a CTkImage to display in the widget

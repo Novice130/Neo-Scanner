@@ -30,7 +30,7 @@ class AutoExporter:
         self,
         watched_folder: str = DEFAULT_WATCHED_FOLDER,
         export_pdf: bool = True,
-        export_separate_images: bool = False,
+        export_separate_images: bool = True,
     ):
         self.watched_folder = os.path.expanduser(watched_folder)
         self.export_pdf = export_pdf
