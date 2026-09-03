@@ -15,6 +15,9 @@ dependencies = [
     "numpy",
     "opencv-python",
     "Pillow",
+    "pymupdf",
+    "fastapi",
+    "uvicorn",
 ]
 
 [project.optional-dependencies]

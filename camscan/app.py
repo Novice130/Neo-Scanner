@@ -20,7 +20,7 @@ import tkinter as tk
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder, dewarp, session, motion, auto_export
+from camscan import scanner, ocr, pdf_builder, dewarp, session, motion, auto_export, remote
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -160,6 +160,9 @@ TOOLTIPS = {
     "watched_folder": "Directory path to auto-export finalized student sessions (e.g. OneDrive sync folder)",
     "browse_watched_folder": "Browse and select destination watched folder",
     "finalize_session": "Finalize current student session and auto-export to watched folder",
+    "remote_server": (
+        "Enable remote control web server accessible from phone browser over Tailscale (port 8000)"
+    ),
     # Right panel
     "select_all": "Select or deselect all captures",
     "delete": "Delete the selected captures",
@@ -431,6 +434,14 @@ class CamScanApp(ctk.CTk):
         )
         self.var_select_all_captures = tk.IntVar(value=0)
 
+        # Remote Control Server (Tailscale / Phone access)
+        self._latest_preview_frame = None
+        self.remote_bridge = remote.AppBridge(self)
+        self.remote_server = remote.RemoteServerManager(
+            self.remote_bridge, host="0.0.0.0", port=8000
+        )
+        self.var_remote_server = tk.IntVar(value=1)
+
         # configure window
         self.title(WINDOW_TITLE)
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -497,6 +508,20 @@ class CamScanApp(ctk.CTk):
             command=change_ui_scaling_event,
         )
         self.scaling_option_menu.set("100%")
+
+        # Add remote server controls
+        self.remote_server_check_box = ctk.CTkCheckBox(
+            self.left_sidebar_frame,
+            text="Remote Control",
+            variable=self.var_remote_server,
+            command=self.toggle_remote_server,
+        )
+        self.remote_url_label = ctk.CTkLabel(
+            self.left_sidebar_frame,
+            text=f":8000 ({remote.get_local_ip()})",
+            font=ctk.CTkFont(size=10),
+            text_color="#2196f3",
+        )
 
         # Add boundary detector selection
         self.boundary_detector_label = ctk.CTkLabel(
@@ -658,6 +683,8 @@ class CamScanApp(ctk.CTk):
         self.appearance_mode_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.scaling_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.scaling_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+        self.remote_server_check_box.pack(**LEFT_MENU_PACK_KWARGS)
+        self.remote_url_label.pack(padx=LEFT_MENU_PAD_X, pady=(0, 4))
         self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.boundary_detector_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
         self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
@@ -770,6 +797,10 @@ class CamScanApp(ctk.CTk):
             text=TOOLTIPS["system_ui_scaling"],
         )
         widgets.Tooltip(
+            widget=self.remote_server_check_box,
+            text=TOOLTIPS["remote_server"],
+        )
+        widgets.Tooltip(
             widget=self.boundary_detector_option_menu,
             text=TOOLTIPS["boundary_detector"],
         )
@@ -837,6 +868,16 @@ class CamScanApp(ctk.CTk):
 
         # Hotkeys
         self.bind(sequence=CAPTURE_KEYBIND, func=lambda _: self.capture_image())
+
+        # Clean shutdown protocol
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # Start remote server if enabled
+        if self.var_remote_server.get():
+            try:
+                self.remote_server.start()
+            except Exception as e:
+                logging.warning(f"Could not start remote server: {e}")
 
         self.show_frame()
 
@@ -945,6 +986,7 @@ class CamScanApp(ctk.CTk):
             # If we are using the 'Free Capture' mode, skip drawing the contour
             if not self.var_free_capture_mode.get():
                 image = utils.draw_contour(image=image, contour=contour)
+            self._latest_preview_frame = image.copy()
             # Convert the OpenCV image to a CTkImage to display in the widget
             image_width = image.shape[1]
             image_height = image.shape[0]
@@ -1449,6 +1491,36 @@ class CamScanApp(ctk.CTk):
         self.scrollable_frame._parent_canvas.yview_moveto(0.0)
         self.scrollable_frame.update()
         dummy_frame.destroy()
+
+    def toggle_remote_server(self):
+        """Toggle remote control server on/off."""
+        if self.var_remote_server.get():
+            try:
+                self.remote_server.start()
+                self.remote_url_label.configure(
+                    text=f":8000 ({remote.get_local_ip()})",
+                    text_color="#2196f3",
+                )
+            except Exception as e:
+                logging.warning(f"Could not start remote server: {e}")
+                self.remote_url_label.configure(
+                    text="Error starting",
+                    text_color="#f44336",
+                )
+        else:
+            self.remote_server.stop()
+            self.remote_url_label.configure(
+                text="Server stopped",
+                text_color="gray",
+            )
+
+    def on_close(self):
+        """Clean shutdown of remote server and application."""
+        try:
+            self.remote_server.stop()
+        except Exception:
+            pass
+        self.destroy()
 
     def change_postprocessing_event(self, *args):
         """
