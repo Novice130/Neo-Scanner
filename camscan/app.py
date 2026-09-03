@@ -10,6 +10,8 @@ import functools
 import logging
 import os
 import re
+import threading
+import time
 import typing as t
 
 import customtkinter as ctk
@@ -84,9 +86,10 @@ EXPORT_MERGED_FILE_TYPES = [
 
 # Supported OCR engines for searchable PDF export
 OCR_OPTIONS = [
+    "PaddleOCR Fast (Books & Documents)",
     "PaddleOCR + TrOCR (Handwriting)",
+    "None (Instant PDF Export)",
     "Vision LLM API",
-    "None (No OCR)",
 ]
 
 # Specify the supported postprocessing functions for the captured images
@@ -492,8 +495,8 @@ class CamScanApp(ctk.CTk):
         )
         self.camera_settings_button = ctk.CTkButton(
             self.left_sidebar_frame,
-            text="Camera Driver Settings",
-            command=self.camera.show_settings,
+            text="Camera Controls & Focus",
+            command=lambda: self.camera.show_settings(self),
         )
 
         # Add a menu for the color settings
@@ -1094,13 +1097,12 @@ class CamScanApp(ctk.CTk):
         # Otherwise, use the warped cropped extracted image
         elif warped_image is not None:
             image = warped_image
+        elif full_image is not None:
+            image = full_image
         else:
             tk.messagebox.showerror(
                 title="Error",
-                message=(
-                    "Could not extract the document image from the Camera. "
-                    "Enable 'Free Capture Mode' to take the image anyway."
-                ),
+                message="Could not capture an image from the Camera.",
             )
             return
 

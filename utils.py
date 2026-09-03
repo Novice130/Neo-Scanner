@@ -10,13 +10,19 @@ def draw_contour(
     color: tuple = (0, 255, 0),
     thickness: int = 4,
 ) -> cv2.Mat:
-    return cv2.polylines(
-        img=image.copy(),
-        pts=[contour],
-        isClosed=True,
-        color=color,
-        thickness=thickness,
-    )
+    out = image.copy()
+    if contour is not None and len(contour) > 0:
+        cv2.polylines(
+            img=out,
+            pts=[contour.astype(np.int32)],
+            isClosed=True,
+            color=color,
+            thickness=thickness,
+        )
+        for pt in contour.reshape(-1, 2):
+            cv2.circle(out, (int(pt[0]), int(pt[1])), 8, (0, 215, 255), -1)
+            cv2.circle(out, (int(pt[0]), int(pt[1])), 10, (0, 140, 255), 2)
+    return out
 
 
 def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):

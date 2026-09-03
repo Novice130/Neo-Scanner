@@ -78,12 +78,17 @@ def cubic_geometric_dewarp(
     map_x = uu.astype(np.float32)
     map_y = ((1.0 - vv) * y_top_eval + vv * y_bot_eval).astype(np.float32)
 
-    # Remap using bicubic interpolation
+    # Robust clamping against coordinate explosion and SHRT_MAX overflow
+    h_img, w_img = image.shape[:2]
+    map_x = np.clip(map_x, 0.0, float(w_img - 1)).astype(np.float32)
+    map_y = np.clip(map_y, 0.0, float(h_img - 1)).astype(np.float32)
+
+    # Remap using linear interpolation with border replication
     dewarped = cv2.remap(
         src=image,
         map1=map_x,
         map2=map_y,
-        interpolation=cv2.INTER_CUBIC,
+        interpolation=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REPLICATE,
     )
 
@@ -131,8 +136,15 @@ class YOLODewarpEngine:
         else:
             inference_img = image
 
-        results = self._model(inference_img, verbose=False, conf=0.2)
+        results = self._model(inference_img, verbose=False, conf=0.15)
         if not results or results[0].masks is None or len(results[0].masks.xy) == 0:
+            # Fallback to adaptive document/book detector
+            from camscan.scanner import find_paper_contour_adaptive, extract_contour
+            best_box = find_paper_contour_adaptive(inference_img)
+            if best_box is not None:
+                orig_box = (best_box / scale).astype(np.int32)
+                warped, ordered_box = extract_contour(image, orig_box)
+                return warped, ordered_box
             return None, None
 
         # Find mask with largest area

@@ -392,6 +392,42 @@ class ScanResult:
     warped: cv2.Mat
 
 
+def find_paper_contour_adaptive(image_scale: np.ndarray) -> np.ndarray | None:
+    """
+    Locates bright paper, books, or notebooks on a desk using LAB Lightness Otsu
+    thresholding, morphological cleaning, and convex quadrilateral fitting.
+    """
+    h, w = image_scale.shape[:2]
+    total_area = h * w
+    lab = cv2.cvtColor(image_scale, cv2.COLOR_BGR2LAB)
+    L, _, _ = cv2.split(lab)
+    thresh = cv2.threshold(L, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+
+    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best_box = None
+    max_area = 0
+
+    for c in cnts:
+        area = cv2.contourArea(c)
+        if area > 0.05 * total_area:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.03 * peri, True)
+            if len(approx) == 4 and cv2.isContourConvex(approx):
+                candidate = approx.reshape(4, 2)
+            else:
+                rect = cv2.minAreaRect(c)
+                candidate = cv2.boxPoints(rect).astype(np.int32)
+
+            if area > max_area:
+                max_area = area
+                best_box = candidate
+
+    return best_box
+
+
 def main(img: cv2.Mat) -> ScanResult:
     """
     Detect and extract a document found in the input image.
@@ -465,62 +501,44 @@ def main(img: cv2.Mat) -> ScanResult:
         if lines is not None and len(lines) <= HOUGH_MAX_LINES:
             break
 
-    # Return if no lines were found in the Hough Transform
-    if lines is None:
-        return ScanResult(
-            debug_images=dict(
-                img=img,
-                img_scale=img_scale,
-                img_scale_gray=img_scale_gray,
-                img_scale_gray_blur=img_scale_gray_blur,
-                img_scale_gray_blur_dilated=img_scale_gray_blur_dilated,
-                img_edge=img_edge,
-                img_hough_preview=None,
-                img_hough_best_contour=None,
-                best_mask=None,
-                warped=None,
-            ),
-            contour=None,
-            warped=None,
+    best_contour = None
+    best_mask = None
+
+    if lines is not None:
+        img_hough_preview = img_scale.copy()
+        lines = lines.reshape((lines.shape[0], lines.shape[2]))
+        img_hough_preview = draw_hough_lines(image=img_hough_preview, lines=lines)
+
+        contours = find_contours(
+            lines=lines,
+            max_x=img_edge.shape[1],
+            max_y=img_edge.shape[0],
         )
+        best_contour, best_mask = find_best_contour(
+            contours=contours,
+            image_edged=img_edge,
+        )
+    else:
+        img_hough_preview = None
 
-    img_hough_preview = img_scale.copy()
-
-    # HoughLines produces an array with shape (num_lines, 1, 2) which we are
-    # reshaping to (num_lines, 2)
-    lines = lines.reshape((lines.shape[0], lines.shape[2]))
-    img_hough_preview = draw_hough_lines(image=img_hough_preview, lines=lines)
-
-    # Run the contour finding algorithm to get a list of contours
-    contours = find_contours(
-        lines=lines,
-        max_x=img_edge.shape[1],
-        max_y=img_edge.shape[0],
-    )
-
-    # Find the best contour by scoring them and filtering out invalid ones
-    best_contour, best_mask = find_best_contour(
-        contours=contours,
-        image_edged=img_edge,
-    )
-
-    # Return if no best contour could be found
+    # If Hough didn't yield a valid 4-point contour, use adaptive paper thresholding
     if best_contour is None:
+        best_contour = find_paper_contour_adaptive(img_scale)
+
+    # If still no contour, fall back to a centered crop of the image
+    if best_contour is None:
+        h, w = img.shape[:2]
+        mx = int(w * 0.05)
+        my = int(h * 0.05)
+        fallback_contour = np.array(
+            [[mx, my], [w - mx, my], [w - mx, h - my], [mx, h - my]],
+            dtype=np.int32,
+        )
+        warped = img[my : h - my, mx : w - mx].copy()
         return ScanResult(
-            debug_images=dict(
-                img=img,
-                img_scale=img_scale,
-                img_scale_gray=img_scale_gray,
-                img_scale_gray_blur=img_scale_gray_blur,
-                img_scale_gray_blur_dilated=img_scale_gray_blur_dilated,
-                img_edge=img_edge,
-                img_hough_preview=img_hough_preview,
-                img_hough_best_contour=None,
-                best_mask=None,
-                warped=None,
-            ),
-            contour=None,
-            warped=None,
+            debug_images=dict(img=img),
+            contour=fallback_contour,
+            warped=warped,
         )
 
     # Scale the best contour back to the original input image scale
