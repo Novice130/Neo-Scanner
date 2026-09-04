@@ -2,6 +2,20 @@ import multiprocessing
 import os
 import sys
 
+# On Windows, unconditionally suppress visible command prompt windows for any child subprocesses
+if sys.platform == "win32":
+    import subprocess
+
+    _orig_popen = subprocess.Popen
+    _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+    def _silent_popen(*args, **kwargs):
+        creationflags = kwargs.get("creationflags", 0)
+        kwargs["creationflags"] = creationflags | _CREATE_NO_WINDOW
+        return _orig_popen(*args, **kwargs)
+
+    subprocess.Popen = _silent_popen
+
 from camscan.app import CamScanApp
 
 

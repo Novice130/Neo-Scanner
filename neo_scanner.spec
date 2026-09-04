@@ -127,6 +127,6 @@ if sys.platform == "darwin":
         info_plist={
             "NSCameraUsageDescription": "Neo Scanner requires camera access to scan documents.",
             "NSHighResolutionCapable": "True",
-            "CFBundleShortVersionString": "1.0.0",
+            "CFBundleShortVersionString": "1.0.1",
         },
     )

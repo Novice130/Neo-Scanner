@@ -2,7 +2,7 @@
 ; Creates a standard Windows installer (Neo_Scanner-Setup.exe)
 
 #define MyAppName "Neo Scanner"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Neo Scanner Contributors"
 #define MyAppURL "https://github.com/Novice130/Neo-Scanner"
 #define MyAppExeName "Neo_Scanner.exe"
