@@ -118,7 +118,7 @@ RESOLUTIONS = [
 
 # Supported boundary detection and dewarping algorithms
 BOUNDARY_DETECTION_OPTIONS = [
-    "YOLOv8 + Geometric Dewarp",
+    "Clean Perspective Crop (Recommended)",
     "Classic Contour (OpenCV)",
 ]
 
@@ -962,13 +962,13 @@ class CamScanApp(ctk.CTk):
 
         if img_capture is not None:
             mode = self.var_boundary_detector.get()
-            if "yolo" in mode.lower():
+            if "perspective" in mode.lower() or "yolo" in mode.lower() or "clean" in mode.lower():
                 try:
                     dewarped, contour = self.yolo_dewarp_engine.detect_and_dewarp(img_capture)
                     if dewarped is not None and contour is not None:
                         return (img_capture, dewarped, contour)
                 except Exception as e:
-                    logging.warning(f"YOLO dewarp fallback: {e}")
+                    logging.warning(f"Perspective crop fallback: {e}")
 
             scan_result = scanner.main(img_capture)
             return (

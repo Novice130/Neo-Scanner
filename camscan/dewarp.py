@@ -211,12 +211,10 @@ class YOLODewarpEngine:
         bot_arr = np.array(bot_pts)
 
         try:
-            dewarped = cubic_geometric_dewarp(
-                image=image,
-                top_points=top_arr,
-                bottom_points=bot_arr,
-            )
-            return dewarped, corners
+            from camscan import scanner
+
+            warped, ordered_corners = scanner.extract_contour(image=image, contour=corners)
+            return warped, corners
         except Exception as e:
-            logger.warning(f"Geometric dewarping failed: {e}")
+            logger.warning(f"Perspective extraction failed: {e}")
             return None, corners
