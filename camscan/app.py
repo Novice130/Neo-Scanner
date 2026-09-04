@@ -961,21 +961,15 @@ class CamScanApp(ctk.CTk):
                 img_capture = self.camera.capture()
 
         if img_capture is not None:
-            mode = self.var_boundary_detector.get()
-            if "perspective" in mode.lower() or "yolo" in mode.lower() or "clean" in mode.lower():
-                try:
-                    dewarped, contour = self.yolo_dewarp_engine.detect_and_dewarp(img_capture)
-                    if dewarped is not None and contour is not None:
-                        return (img_capture, dewarped, contour)
-                except Exception as e:
-                    logging.warning(f"Perspective crop fallback: {e}")
-
+            # Use the robust document & book detector matching the live viewfinder
             scan_result = scanner.main(img_capture)
-            return (
-                img_capture,
-                scan_result.warped,
-                scan_result.contour,
-            )
+            if scan_result.warped is not None and scan_result.contour is not None:
+                return (
+                    img_capture,
+                    scan_result.warped,
+                    scan_result.contour,
+                )
+            return (img_capture, img_capture, None)
 
         return (None, None, None)
 
@@ -1177,9 +1171,10 @@ class CamScanApp(ctk.CTk):
         clean_tag = session.sanitize_tag(self.var_student_tag.get())
         base_name = f"{clean_tag}_{timestamp_str}" if clean_tag else timestamp_str
 
-        # If we are using two-page mode, cut the image into left and right parts
-        if self.var_two_page_mode.get():
-            cutoff_width = image.shape[1] // 2
+        # If we are using two-page mode, cut into left and right parts only if it's an open spread (W > 1.15 * H)
+        img_h, img_w = image.shape[:2]
+        if self.var_two_page_mode.get() and (img_w > 1.15 * img_h):
+            cutoff_width = img_w // 2
             left_image = image[:, :cutoff_width]
             right_image = image[:, cutoff_width:]
             new_entries = [
@@ -1198,7 +1193,7 @@ class CamScanApp(ctk.CTk):
                     move_entry=self.move_entry,
                 ),
             ]
-        # Otherwise, take the entire image and as as an entry
+        # Otherwise, take the entire image as an entry (single page, cover, or portrait orientation)
         else:
             new_entries = [
                 CaptureEntry(
