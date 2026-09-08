@@ -78,9 +78,9 @@ def build_session_export_dir(
 ) -> str:
     """
     Build nested export directory path:
-    {base_folder} / {Subject} / {Date} / {Student}/
+    {base_folder} / {Subject} / {Student} / {Date}/
     Example:
-    '~/OneDrive/CamScan/Maths/25 Aug/Ahmad'
+    '~/OneDrive/CamScan/Maths/Ahmad/25 Aug'
     """
     clean_base = os.path.expanduser(base_folder.strip()) if base_folder else "."
     clean_subject = sanitize_tag(subject) or "General"
@@ -89,5 +89,5 @@ def build_session_export_dir(
     clean_date = re.sub(r'[^a-zA-Z0-9_\- ]', "", clean_date).strip() or "Today"
     clean_student = sanitize_tag(student_tag) or "Untagged"
 
-    return os.path.join(clean_base, clean_subject, clean_date, clean_student)
+    return os.path.join(clean_base, clean_subject, clean_student, clean_date)
 

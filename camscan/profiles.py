@@ -48,7 +48,7 @@ class UserProfile:
     boundary_detector: str = "Clean Perspective Crop (Recommended)"
     postprocessing_option: str = "Magic Color (CamScanner)"
     ocr_engine: str = "PaddleOCR Fast (Books & Documents)"
-    auto_capture: bool = False
+    auto_capture: bool = True
     motion_threshold: float = 3.0
     settle_time: float = 0.8
     ui_scaling: str = "100%"

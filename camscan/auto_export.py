@@ -51,7 +51,7 @@ class AutoExporter:
     ) -> dict[str, str]:
         """
         Export a finalized session's images to the hierarchical watched folder:
-        {watched_folder} / {subject} / {date_str} / {student_tag}/
+        {watched_folder} / {subject} / {student_tag} / {date_str}/
 
         :param images: List of OpenCV BGR images
         :param student_tag: Student identifier or name (e.g. 'Ahmad')

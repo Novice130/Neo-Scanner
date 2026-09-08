@@ -460,8 +460,9 @@ class CamScanApp(ctk.CTk):
             settle_time_s=self.active_profile.settle_time,
             cooldown_s=2.0,
         )
+        self._session_active: bool = False
         self.var_auto_capture = tk.IntVar(
-            value=1 if self.active_profile.auto_capture else 0
+            value=1 if getattr(self.active_profile, "auto_capture", True) else 0
         )
         self.var_motion_threshold = tk.StringVar(
             value=str(self.active_profile.motion_threshold)
@@ -859,6 +860,28 @@ class CamScanApp(ctk.CTk):
             font=ctk.CTkFont(size=11, weight="bold"),
             text_color="gray",
         )
+        self.session_buttons_frame = ctk.CTkFrame(
+            self.left_sidebar_frame, fg_color="transparent"
+        )
+        self.session_action_button = ctk.CTkButton(
+            self.session_buttons_frame,
+            text="▶️ Start Capture",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            height=42,
+            fg_color="#2e7d32",
+            hover_color="#1b5e20",
+            command=self.toggle_capture_session,
+        )
+        self.stop_capture_button = ctk.CTkButton(
+            self.session_buttons_frame,
+            text="⏹️ Stop",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            width=70,
+            height=42,
+            fg_color="#c62828",
+            hover_color="#b71c1c",
+            command=self.stop_capture,
+        )
         self.capture_image_button = ctk.CTkButton(
             self.left_sidebar_frame,
             text="Capture",
@@ -943,14 +966,16 @@ class CamScanApp(ctk.CTk):
             self.left_sidebar_frame, text="📸 Scan & Capture", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
         )
         self.sec_scan_label.pack(padx=LEFT_MENU_PAD_X, pady=(10, 4), fill="x")
+        self.session_buttons_frame.pack(padx=LEFT_MENU_PAD_X, pady=(4, 4), fill="x")
+        self.session_action_button.pack(side=ctk.LEFT, fill=ctk.X, expand=True)
         self.capture_image_button.configure(
-            text="📸 Capture Page [Space]",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            height=40,
+            text="📸 Manual Snap [Space]",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            height=32,
             fg_color="#1976D2",
             hover_color="#1565C0",
         )
-        self.capture_image_button.pack(padx=LEFT_MENU_PAD_X, pady=(4, 8), fill="x")
+        self.capture_image_button.pack(padx=LEFT_MENU_PAD_X, pady=(2, 8), fill="x")
 
         self.camera_selection_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.camera_selection_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
@@ -1317,46 +1342,60 @@ class CamScanApp(ctk.CTk):
                 except ValueError:
                     pass
 
+                has_doc = (contour is not None or self.var_free_capture_mode.get())
                 should_trigger, motion_score, motion_state = (
-                    self.page_turn_detector.process_frame(raw_image)
+                    self.page_turn_detector.process_frame(
+                        raw_image,
+                        contour=contour,
+                        has_document=has_doc,
+                    )
                 )
 
-                if motion_state == motion.PageTurnDetector.STATE_IDLE:
+                if not self._session_active:
                     self.motion_status_label.configure(
-                        text=f"Status: Still ({motion_score:.1f}%)",
+                        text="Auto-capture: Ready (Click Start Capture)",
+                        text_color="#2196F3",
+                    )
+                elif motion_state == motion.PageTurnDetector.STATE_HAND_DETECTED:
+                    self.motion_status_label.configure(
+                        text="Status: ✋ Holding book (Hand detected)",
+                        text_color="#E91E63",
+                    )
+                elif motion_state == motion.PageTurnDetector.STATE_IDLE:
+                    self.motion_status_label.configure(
+                        text=f"Status: Waiting for page turn ({motion_score:.1f}%)",
                         text_color="#4CAF50",
                     )
                 elif motion_state == motion.PageTurnDetector.STATE_MOTION:
                     self.motion_status_label.configure(
-                        text=f"Status: Moving ({motion_score:.1f}%)",
+                        text=f"Status: Turning page... ({motion_score:.1f}%)",
                         text_color="#FF9800",
                     )
                 elif motion_state == motion.PageTurnDetector.STATE_SETTLING:
-                    if focus_score < 65.0:
-                        self.motion_status_label.configure(
-                            text=f"Status: Focusing... ({focus_score:.0f})",
-                            text_color="#FF9800",
-                        )
-                        # Camera is still hunting focus; do not capture blur
-                        should_trigger = False
-                    else:
-                        self.motion_status_label.configure(
-                            text=f"Status: Sharp & Settling ({focus_score:.0f})",
-                            text_color="#2196F3",
-                        )
+                    self.motion_status_label.configure(
+                        text=f"Status: Page settled — capturing... ({focus_score:.0f})",
+                        text_color="#2196F3",
+                    )
                 elif motion_state == motion.PageTurnDetector.STATE_COOLDOWN:
                     self.motion_status_label.configure(
-                        text="Status: Captured (Cooldown)",
-                        text_color="#9C27B0",
+                        text=f"Status: Captured! ({len(self.entries)} pages)",
+                        text_color="#4CAF50",
                     )
 
-                # Only snap when motion settled AND image is confirmed sharp
-                if should_trigger and focus_score >= 65.0 and not getattr(self, "_is_capturing", False):
+                # Snap when settled without hands during active session, with minimum basic sharpness
+                if (
+                    should_trigger
+                    and self._session_active
+                    and not self.page_turn_detector.hand_detected
+                    and focus_score >= 10.0
+                    and not getattr(self, "_is_capturing", False)
+                ):
                     self._is_capturing = True
                     try:
                         self.capture_image()
                     finally:
                         self._is_capturing = False
+
             else:
                 self.motion_status_label.configure(
                     text=f"Auto-capture: Off (Focus: {focus_score:.0f})",
@@ -1420,6 +1459,19 @@ class CamScanApp(ctk.CTk):
             )
             return
 
+        # Ensure session is marked active when a capture is made
+        if not self._session_active:
+            self._session_active = True
+            if hasattr(self, "session_action_button"):
+                self.session_action_button.configure(
+                    text="📁 Finish & Save",
+                    fg_color="#1565C0",
+                    hover_color="#0D47A1",
+                )
+            if hasattr(self, "stop_capture_button"):
+                self.stop_capture_button.pack(side=ctk.LEFT, padx=(4, 0))
+
+
         # Give the capture a name using student tag and timestamp string
         timestamp_str = datetime.now().strftime(r"%Y%m%d_%H%M%S_%f")
         clean_tag = session.sanitize_tag(self.var_student_tag.get())
@@ -1463,9 +1515,18 @@ class CamScanApp(ctk.CTk):
         self.apply_postprocessing(entries=new_entries)
         self.entries += new_entries
 
+        # Update button text with page count
+        n_pages = len(self.entries)
+        if hasattr(self, "finalize_session_button"):
+            tag_name = self.var_student_tag.get().strip() or "Session"
+            self.finalize_session_button.configure(
+                text=f"Finish & Export ({tag_name}: {n_pages}p)"
+            )
+
         # Update the scrollable frame with the entries and move it to the bottom
         self.scrollable_frame.update()
         self.scrollable_frame._parent_canvas.yview_moveto(1.0)
+
 
     def move_entry(self, entry: CaptureEntry, distance: int):
         """
@@ -1781,11 +1842,74 @@ class CamScanApp(ctk.CTk):
             self.var_watched_folder.set(folder)
             self.auto_exporter.set_watched_folder(folder)
 
+    def toggle_capture_session(self):
+        """Toggle active student capture session: Start Capture <-> Finish Capture."""
+        if not self._session_active:
+            # Start capture session
+            student_tag = self.var_student_tag.get().strip()
+            if not student_tag:
+                prof = self.profile_manager.get_active_profile()
+                if prof.students:
+                    student_tag = prof.students[0]
+                    self.var_student_tag.set(student_tag)
+                else:
+                    student_tag = "Untagged"
+                    self.var_student_tag.set(student_tag)
+
+            self._session_active = True
+            if hasattr(self, "session_action_button"):
+                self.session_action_button.configure(
+                    text="📁 Finish & Save",
+                    fg_color="#1565C0",
+                    hover_color="#0D47A1",
+                )
+            if hasattr(self, "stop_capture_button"):
+                self.stop_capture_button.pack(side=ctk.LEFT, padx=(4, 0))
+            if hasattr(self, "finalize_session_button"):
+                self.finalize_session_button.configure(
+                    text=f"Finish & Export ({student_tag})",
+                )
+            self.page_turn_detector.arm_new_session(auto_trigger_initial=True)
+            self._update_path_preview()
+        else:
+            # Finish capture session
+            self.finalize_session()
+
+    def stop_capture(self):
+        """Stop capturing and disarm auto-capture without deleting captured pages."""
+        self._session_active = False
+        self.page_turn_detector.reset()
+        if hasattr(self, "session_action_button"):
+            self.session_action_button.configure(
+                text="▶️ Resume Capture",
+                fg_color="#2e7d32",
+                hover_color="#1b5e20",
+            )
+        if hasattr(self, "stop_capture_button"):
+            self.stop_capture_button.pack_forget()
+        if hasattr(self, "motion_status_label"):
+            self.motion_status_label.configure(
+                text=f"Auto-capture stopped ({len(self.entries)} pages ready to finish)",
+                text_color="#FF9800",
+            )
+
     def finalize_session(self):
         """
         Finalize the current student capture session and auto-export all pages
         to the watched OneDrive folder, then prepare for the next student.
         """
+        # Immediately halt capture and disarm motion detector so no more frames snap while finishing!
+        self._session_active = False
+        self.page_turn_detector.reset()
+        if hasattr(self, "session_action_button"):
+            self.session_action_button.configure(
+                text="▶️ Start Capture",
+                fg_color="#2e7d32",
+                hover_color="#1b5e20",
+            )
+        if hasattr(self, "stop_capture_button"):
+            self.stop_capture_button.pack_forget()
+
         n = len(self.entries)
         if n == 0:
             tk.messagebox.showwarning(
@@ -1793,6 +1917,7 @@ class CamScanApp(ctk.CTk):
                 message="No pages have been captured yet for this session.",
             )
             return
+
 
         watched_dir = self.var_watched_folder.get()
         self.auto_exporter.set_watched_folder(watched_dir)
@@ -1819,7 +1944,7 @@ class CamScanApp(ctk.CTk):
         tag_display = student_tag if student_tag else "Untagged"
         status_label = ctk.CTkLabel(
             progress_dialog,
-            text=f"Auto-exporting {n} page(s) for '{tag_display}' to {subject}/{date_str}...",
+            text=f"Auto-exporting {n} page(s) for '{tag_display}' to {subject}/{tag_display}/{date_str}...",
             font=ctk.CTkFont(size=14, weight="bold"),
             wraplength=420,
         )
@@ -1846,6 +1971,18 @@ class CamScanApp(ctk.CTk):
                 def _on_done():
                     progress_dialog.destroy()
                     self.delete_all_entries()
+                    self._session_active = False
+                    if hasattr(self, "session_action_button"):
+                        self.session_action_button.configure(
+                            text="▶️ Start Capture",
+                            fg_color="#2e7d32",
+                            hover_color="#1b5e20",
+                        )
+                    if hasattr(self, "finalize_session_button"):
+                        self.finalize_session_button.configure(
+                            text="Finish & Export Session",
+                        )
+                    self.page_turn_detector.reset()
                     self.var_student_tag.set("")
                     self._update_path_preview()
                     pdf_path = results.get("pdf", "")
@@ -1889,7 +2026,8 @@ class CamScanApp(ctk.CTk):
         subj = self.var_subject.get() or "General"
         dt = session.get_system_date_str()
         stud = self.var_student_tag.get() or "Untagged"
-        return f"📁 Save: {subj} / {dt} / {stud} /"
+        return f"📁 Save: {subj} / {stud} / {dt} /"
+
 
     def _update_path_preview(self, *args):
         if hasattr(self, "path_preview_label"):
@@ -1997,7 +2135,7 @@ class CamScanApp(ctk.CTk):
         self.var_boundary_detector.set(prof.boundary_detector)
         self.var_postprocessing_option.set(prof.postprocessing_option)
         self.var_ocr_engine.set(prof.ocr_engine)
-        self.var_auto_capture.set(1 if prof.auto_capture else 0)
+        self.var_auto_capture.set(1 if getattr(prof, "auto_capture", True) else 0)
         self.var_motion_threshold.set(str(prof.motion_threshold))
         self.var_settle_time.set(str(prof.settle_time))
         self.var_watched_folder.set(prof.watched_folder)

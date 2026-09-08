@@ -58,7 +58,7 @@ def test_build_session_export_dir():
         student_tag="Ahmad",
         timestamp=fixed_time,
     )
-    assert path == "/Users/teacher/OneDrive/Maths/25 Aug/Ahmad"
+    assert path == "/Users/teacher/OneDrive/Maths/Ahmad/25 Aug"
 
     # Default fallbacks
     path_default = build_session_export_dir(
@@ -68,5 +68,5 @@ def test_build_session_export_dir():
         student_tag="",
         timestamp=fixed_time,
     )
-    assert path_default == "/Users/teacher/OneDrive/General/25 Aug/Untagged"
+    assert path_default == "/Users/teacher/OneDrive/General/Untagged/25 Aug"
 

@@ -57,16 +57,16 @@ Use this checklist to test each feature on your machine. Mark each item as verif
 
 ---
 
-### 4. Dynamic Hierarchical Folder Structure
+### 4. Dynamic Hierarchical Folder Structure (Student > Date)
 - [ ] **Target Directory Layout**:
   ```
-  {Watched Folder} / {Subject} / {System Date} / {Student Name} /
+  {Watched Folder} / {Subject} / {Student Name} / {System Date} /
   ```
   Example:
   ```
-  ~/OneDrive/CamScan/Maths/8 Sep/Ahmad/
+  ~/OneDrive/CamScan/Chemistry/Ahmad/9 Sep/
   ```
-- [ ] **System Date Auto-Extraction**: Automatically extracts `{day} {short_month}` (e.g. `25 Aug`, `8 Sep`) from the system clock without manual date typing.
+- [ ] **System Date Auto-Extraction**: Automatically extracts `{day} {short_month}` (e.g. `25 Aug`, `9 Sep`) from the system clock without manual date typing.
 - [ ] **Subject / Main Folder Management**:
   - [ ] Subject dropdown preloaded with defaults: `Maths`, `English`, `Science`.
   - [ ] `+` button opens a dialog to add a new subject (persists in the active profile).
@@ -76,25 +76,33 @@ Use this checklist to test each feature on your machine. Mark each item as verif
   - [ ] `+` button opens a dialog to add a new student.
   - [ ] `-` button removes the selected student.
 - [ ] **Live Destination Preview**: Sidebar displays live preview:
-  `📁 Save: Maths / 8 Sep / Ahmad /` updating immediately whenever Subject, Date, or Student changes.
+  `📁 Save: Chemistry / Ahmad / 9 Sep /` updating immediately whenever Subject, Date, or Student changes.
 - [ ] **Session Export Outputs**:
-  - [ ] Searchable PDF saved to: `{Watched Folder}/{Subject}/{Date}/{Student}/{student}_{date}.pdf`
-  - [ ] High-res page images saved to: `{Watched Folder}/{Subject}/{Date}/{Student}/images/page_001.png`, etc.
+  - [ ] Searchable PDF saved to: `{Watched Folder}/{Subject}/{Student}/{Date}/{student}_{date}.pdf`
+  - [ ] High-res page images saved to: `{Watched Folder}/{Subject}/{Student}/{Date}/images/page_001.png`, etc.
 
 ---
 
-### 5. Scanner Controls & Boundary Detection
-- [ ] **Camera Controls**:
+### 5. Smart Scanner Controls & Auto-Capture on Page Turn
+- [ ] **Session Workflow ("Start Capture" -> "Finish Capture")**:
+  - [ ] Prominent **"▶️ Start Capture"** button initiates an active student scanning session.
+  - [ ] **"Finish & Export Session"** finalizes the session and saves to the student's date folder.
+  - [ ] **"📸 Manual Snap [Space]"** allows instant manual capture anytime during the session.
+- [ ] **Default Auto-Capture ON**:
+  - [ ] Auto-capture on page turn is enabled by default across all profiles.
+- [ ] **Hand & Holding Book Detection (YCrCb Skin Masking)**:
+  - [ ] Detects hands/fingers touching or holding the book open.
+  - [ ] Displays `Status: ✋ Holding book (Hand detected)` and holds capture until hands release the page.
+  - [ ] Once hands leave the page, triggers capture automatically when page settles.
+- [ ] **Duplicate Page Prevention**:
+  - [ ] Visual page difference tracking prevents re-capturing unchanged pages.
+- [ ] **Camera Controls & Boundary Detection**:
   - [ ] Camera source selection (built-in webcam, external USB document camera).
   - [ ] Resolution selector (e.g. 1920x1080, 1280x720).
-  - [ ] Flip Horizontal / Flip Vertical toggles.
-- [ ] **Boundary Detection**:
   - [ ] `Clean Perspective Crop (Recommended)`: Automatic 4-point quadrilateral detection and perspective warp.
   - [ ] `Classic Contour (OpenCV)`: OpenCV Canny/Hough boundary detection.
-- [ ] **Dewarping**:
   - [ ] Spine dewarping toggle to flatten curved notebook pages using cubic curve fitting.
-- [ ] **Auto-Capture on Page Turn**:
-  - [ ] Motion detection sensing page turns with settling cooldown timer.
+
 
 ---
 
