@@ -44,13 +44,19 @@ class AutoExporter:
         self,
         images: list[np.ndarray],
         student_tag: str,
+        subject: str = "General",
+        date_str: t.Optional[str] = None,
         ocr_engine: t.Optional["BaseOCREngine"] = None,
         progress_callback: t.Optional[t.Callable[[str], None]] = None,
     ) -> dict[str, str]:
         """
-        Export a finalized session's images to the watched folder.
+        Export a finalized session's images to the hierarchical watched folder:
+        {watched_folder} / {subject} / {date_str} / {student_tag}/
+
         :param images: List of OpenCV BGR images
-        :param student_tag: Student identifier or name
+        :param student_tag: Student identifier or name (e.g. 'Ahmad')
+        :param subject: Main folder category (e.g. 'Maths', 'English', 'Science')
+        :param date_str: Dynamic date folder (e.g. '25 Aug', '5 Sep')
         :param ocr_engine: Optional OCR engine for searchable handwriting PDF
         :param progress_callback: Optional status callback
         :return: Dict with paths of exported artifacts
@@ -58,15 +64,21 @@ class AutoExporter:
         if not images:
             return {}
 
-        os.makedirs(self.watched_folder, exist_ok=True)
-        results = {}
+        target_dir = session.build_session_export_dir(
+            base_folder=self.watched_folder,
+            subject=subject,
+            date_str=date_str,
+            student_tag=student_tag,
+        )
+        os.makedirs(target_dir, exist_ok=True)
+        results = {"target_dir": target_dir}
 
         # 1. Export merged PDF
         if self.export_pdf:
             pdf_filename = session.generate_session_filename(
                 student_tag=student_tag, ext="pdf"
             )
-            pdf_path = os.path.join(self.watched_folder, pdf_filename)
+            pdf_path = os.path.join(target_dir, pdf_filename)
 
             ocr_results = None
             if ocr_engine is not None:
@@ -84,7 +96,7 @@ class AutoExporter:
                     ocr_results.append(lines)
 
             if progress_callback:
-                progress_callback("Auto-export: Writing PDF to watched folder...")
+                progress_callback("Auto-export: Writing PDF to target folder...")
 
             pdf_builder.create_searchable_pdf(
                 images=images,
@@ -96,16 +108,16 @@ class AutoExporter:
 
         # 2. Export separate page images if configured
         if self.export_separate_images:
-            session_dir_name = session.generate_session_dirname(student_tag=student_tag)
-            session_dir_path = os.path.join(self.watched_folder, session_dir_name)
-            os.makedirs(session_dir_path, exist_ok=True)
-
+            images_subfolder = os.path.join(target_dir, "images")
+            os.makedirs(images_subfolder, exist_ok=True)
+            clean_tag = session.sanitize_tag(student_tag) or "page"
             for idx, img in enumerate(images, start=1):
-                img_name = f"{idx:03d}_{session_dir_name}.png"
-                img_path = os.path.join(session_dir_path, img_name)
+                img_name = f"{idx:03d}_{clean_tag}.png"
+                img_path = os.path.join(images_subfolder, img_name)
                 cv2.imwrite(img_path, img)
 
-            results["images_dir"] = session_dir_path
-            logger.info(f"Auto-exported session images to {session_dir_path}")
+            results["images_dir"] = images_subfolder
+            logger.info(f"Auto-exported session images to {images_subfolder}")
 
         return results
+

@@ -19,10 +19,22 @@ import cv2
 import numpy as np
 import PIL
 import tkinter as tk
+from tkinter import simpledialog, messagebox
 
 from camscan import postprocessing, widgets
 from camscan.camera import Camera
-from camscan import scanner, ocr, pdf_builder, dewarp, session, motion, auto_export, remote
+from camscan import (
+    scanner,
+    ocr,
+    pdf_builder,
+    dewarp,
+    session,
+    motion,
+    auto_export,
+    remote,
+    tailscale,
+    profiles,
+)
 from camscan import __app_display_name__, __version__
 import utils
 
@@ -406,11 +418,25 @@ class CamScanApp(ctk.CTk):
 
         self.camera = Camera()
         self.entries = []
+
+        # Multi-user profile management
+        self.profile_manager = profiles.ProfileManager()
+        self.active_profile = self.profile_manager.get_active_profile()
+        self.var_active_profile = tk.StringVar(value=self.active_profile.name)
+        self.var_subject = tk.StringVar(value=self.active_profile.active_subject)
+        self.var_student_tag = tk.StringVar(value=self.active_profile.active_student)
+
         self.var_postprocessing_option = tk.StringVar(
-            value=list(POSTPROCESSING_OPTIONS.keys())[0]
+            value=self.active_profile.postprocessing_option
+            if self.active_profile.postprocessing_option in POSTPROCESSING_OPTIONS
+            else list(POSTPROCESSING_OPTIONS.keys())[0]
         )
-        self.var_two_page_mode = tk.IntVar(value=0)
-        self.var_free_capture_mode = tk.IntVar(value=0)
+        self.var_two_page_mode = tk.IntVar(
+            value=1 if self.active_profile.two_page_mode else 0
+        )
+        self.var_free_capture_mode = tk.IntVar(
+            value=1 if self.active_profile.free_capture_mode else 0
+        )
         self.var_select_all_captures = tk.IntVar(value=0)
         self.var_merged_captures_file_type = tk.StringVar(
             value=EXPORT_MERGED_FILE_TYPES[0]
@@ -418,33 +444,49 @@ class CamScanApp(ctk.CTk):
         self.var_separate_captures_file_type = tk.StringVar(
             value=EXPORT_SEPARATE_FILE_TYPES[0]
         )
-        self.var_ocr_engine = tk.StringVar(value=OCR_OPTIONS[0])
+        self.var_ocr_engine = tk.StringVar(
+            value=self.active_profile.ocr_engine
+            if self.active_profile.ocr_engine in OCR_OPTIONS
+            else OCR_OPTIONS[0]
+        )
         self.yolo_dewarp_engine = dewarp.YOLODewarpEngine()
         self.var_boundary_detector = tk.StringVar(
-            value=BOUNDARY_DETECTION_OPTIONS[0]
+            value=self.active_profile.boundary_detector
+            if self.active_profile.boundary_detector in BOUNDARY_DETECTION_OPTIONS
+            else BOUNDARY_DETECTION_OPTIONS[0]
         )
-        self.var_student_tag = tk.StringVar(value="")
         self.page_turn_detector = motion.PageTurnDetector(
-            motion_threshold=3.0,
-            settle_time_s=0.8,
+            motion_threshold=self.active_profile.motion_threshold,
+            settle_time_s=self.active_profile.settle_time,
             cooldown_s=2.0,
         )
-        self.var_auto_capture = tk.IntVar(value=0)
-        self.var_motion_threshold = tk.StringVar(value="3.0")
-        self.var_settle_time = tk.StringVar(value="0.8")
-        self.auto_exporter = auto_export.AutoExporter()
+        self.var_auto_capture = tk.IntVar(
+            value=1 if self.active_profile.auto_capture else 0
+        )
+        self.var_motion_threshold = tk.StringVar(
+            value=str(self.active_profile.motion_threshold)
+        )
+        self.var_settle_time = tk.StringVar(value=str(self.active_profile.settle_time))
+        self.auto_exporter = auto_export.AutoExporter(
+            watched_folder=self.active_profile.watched_folder
+        )
         self.var_watched_folder = tk.StringVar(
             value=self.auto_exporter.watched_folder
         )
-        self.var_select_all_captures = tk.IntVar(value=0)
 
-        # Remote Control Server (Tailscale / Phone access)
+        # Remote Control Server (Tailscale / Phone access with Zero-Trust Security)
         self._latest_preview_frame = None
         self.remote_bridge = remote.AppBridge(self)
+        self.remote_security_manager = tailscale.SessionSecurityManager()
         self.remote_server = remote.RemoteServerManager(
-            self.remote_bridge, host="0.0.0.0", port=8000
+            self.remote_bridge,
+            host="0.0.0.0",
+            port=8000,
+            security_manager=self.remote_security_manager,
+            allow_lan=self.active_profile.allow_lan_access,
         )
-        self.var_remote_server = tk.IntVar(value=1)
+        init_remote = 1 if self.active_profile.remote_startup_action == "always" else 0
+        self.var_remote_server = tk.IntVar(value=init_remote)
 
         # configure window
         self.title(WINDOW_TITLE)
@@ -533,19 +575,143 @@ class CamScanApp(ctk.CTk):
         )
         self.scaling_option_menu.set("100%")
 
-        # Add remote server controls
+        # Multi-user profile selector widgets
+        self.user_profile_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
+        self.user_profile_label = ctk.CTkLabel(
+            self.user_profile_frame, text="👤 User:", font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.user_profile_option_menu = ctk.CTkOptionMenu(
+            self.user_profile_frame,
+            values=self.profile_manager.get_profile_names(),
+            variable=self.var_active_profile,
+            command=self.switch_user_profile,
+            width=135,
+        )
+        self.add_profile_button = ctk.CTkButton(
+            self.user_profile_frame,
+            text="+",
+            width=28,
+            command=self.prompt_add_profile,
+        )
+        self.del_profile_button = ctk.CTkButton(
+            self.user_profile_frame,
+            text="🗑️",
+            width=28,
+            fg_color="#c62828",
+            hover_color="#b71c1c",
+            command=self.prompt_delete_profile,
+        )
+        self.user_profile_label.pack(side=ctk.LEFT, padx=(0, 4))
+        self.user_profile_option_menu.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.add_profile_button.pack(side=ctk.LEFT, padx=(0, 2))
+        self.del_profile_button.pack(side=ctk.LEFT)
+
+        # Main Folder (Subject)
+        self.subject_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Main Folder (Subject):", anchor="w"
+        )
+        self.subject_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
+        self.subject_combobox = ctk.CTkComboBox(
+            self.subject_frame,
+            values=self.active_profile.subjects,
+            variable=self.var_subject,
+            command=self.on_subject_selected,
+        )
+        self.add_subject_button = ctk.CTkButton(
+            self.subject_frame, text="+", width=28, command=self.prompt_add_subject
+        )
+        self.del_subject_button = ctk.CTkButton(
+            self.subject_frame, text="-", width=28, command=self.prompt_remove_subject
+        )
+        self.subject_combobox.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.add_subject_button.pack(side=ctk.LEFT, padx=(0, 2))
+        self.del_subject_button.pack(side=ctk.LEFT)
+
+        # Dynamic System Date Subfolder
+        self.system_date_label = ctk.CTkLabel(
+            self.left_sidebar_frame,
+            text=f"📅 Date Subfolder: {session.get_system_date_str()} (Auto)",
+            font=ctk.CTkFont(size=11),
+            text_color="#4caf50",
+            anchor="w",
+        )
+
+        # Student Subfolder dropdown + text entry
+        self.student_tag_label = ctk.CTkLabel(
+            self.left_sidebar_frame, text="Student Subfolder:", anchor="w"
+        )
+        self.student_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
+        self.student_combobox = ctk.CTkComboBox(
+            self.student_frame,
+            values=self.active_profile.students,
+            variable=self.var_student_tag,
+            command=self.on_student_selected,
+        )
+        self.add_student_button = ctk.CTkButton(
+            self.student_frame, text="+", width=28, command=self.prompt_add_student
+        )
+        self.del_student_button = ctk.CTkButton(
+            self.student_frame, text="-", width=28, command=self.prompt_remove_student
+        )
+        self.student_combobox.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.add_student_button.pack(side=ctk.LEFT, padx=(0, 2))
+        self.del_student_button.pack(side=ctk.LEFT)
+
+        # Live export destination preview
+        self.path_preview_label = ctk.CTkLabel(
+            self.left_sidebar_frame,
+            text=self._get_path_preview_text(),
+            font=ctk.CTkFont(size=10),
+            text_color="#64b5f6",
+            wraplength=240,
+            justify="left",
+            anchor="w",
+        )
+
+        # Traces for reactive path preview
+        self.var_subject.trace_add("write", self._update_path_preview)
+        self.var_student_tag.trace_add("write", self._update_path_preview)
+        self.var_watched_folder.trace_add("write", self._update_path_preview)
+
+        # Remote server controls
         self.remote_server_check_box = ctk.CTkCheckBox(
             self.left_sidebar_frame,
-            text="Remote Control",
+            text="Remote Session",
             variable=self.var_remote_server,
             command=self.toggle_remote_server,
         )
         self.remote_url_label = ctk.CTkLabel(
             self.left_sidebar_frame,
-            text=f":8000 ({remote.get_local_ip()})",
+            text=self._get_remote_status_text(),
             font=ctk.CTkFont(size=10),
             text_color="#2196f3",
+            wraplength=240,
+            justify="left",
         )
+        self.remote_pin_label = ctk.CTkLabel(
+            self.left_sidebar_frame,
+            text=f"🔑 PIN: {self.remote_server.get_pairing_pin()}",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#ffb74d",
+            anchor="w",
+        )
+        self.remote_btn_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
+        self.btn_show_qr = ctk.CTkButton(
+            self.remote_btn_frame,
+            text="📱 QR Code",
+            height=28,
+            font=ctk.CTkFont(size=11),
+            command=self.show_pairing_qr_dialog,
+        )
+        self.btn_copy_link = ctk.CTkButton(
+            self.remote_btn_frame,
+            text="📋 Copy Link",
+            height=28,
+            font=ctk.CTkFont(size=11),
+            command=self.copy_remote_link,
+        )
+        self.btn_show_qr.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.btn_copy_link.pack(side=ctk.LEFT, fill=ctk.X, expand=True)
 
         # Add boundary detector selection
         self.boundary_detector_label = ctk.CTkLabel(
@@ -555,16 +721,6 @@ class CamScanApp(ctk.CTk):
             self.left_sidebar_frame,
             values=BOUNDARY_DETECTION_OPTIONS,
             variable=self.var_boundary_detector,
-        )
-
-        # Add student session tagging
-        self.student_tag_label = ctk.CTkLabel(
-            self.left_sidebar_frame, text="Student Name / ID:", anchor="w"
-        )
-        self.student_tag_entry = ctk.CTkEntry(
-            self.left_sidebar_frame,
-            placeholder_text="e.g. Student_101",
-            textvariable=self.var_student_tag,
         )
 
         # Add a button for capturing the screen
@@ -697,7 +853,8 @@ class CamScanApp(ctk.CTk):
         )
 
         # Organize left menu items logically into clean sections
-        self.left_sidebar_title_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 10))
+        self.left_sidebar_title_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 6))
+        self.user_profile_frame.pack(padx=LEFT_MENU_PAD_X, pady=(0, 10), fill="x")
 
         # --- SECTION 1: 📸 SCAN & CAPTURE ---
         self.sec_scan_label = ctk.CTkLabel(
@@ -715,8 +872,14 @@ class CamScanApp(ctk.CTk):
 
         self.camera_selection_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.camera_selection_option_menu.pack(**LEFT_MENU_PACK_KWARGS)
+
+        self.subject_label.pack(**LEFT_MENU_PACK_KWARGS)
+        self.subject_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.system_date_label.pack(**LEFT_MENU_PACK_KWARGS)
         self.student_tag_label.pack(**LEFT_MENU_PACK_KWARGS)
-        self.student_tag_entry.pack(**LEFT_MENU_PACK_KWARGS)
+        self.student_frame.pack(**LEFT_MENU_PACK_KWARGS)
+        self.path_preview_label.pack(**LEFT_MENU_PACK_KWARGS)
+
         self.two_page_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
         self.free_capture_setting_check_box.pack(**LEFT_MENU_PACK_KWARGS)
         self.boundary_detector_label.pack(**LEFT_MENU_PACK_KWARGS)
@@ -754,11 +917,13 @@ class CamScanApp(ctk.CTk):
 
         # --- SECTION 4: 📱 REMOTE CONTROL (TAILSCALE) ---
         self.sec_remote_label = ctk.CTkLabel(
-            self.left_sidebar_frame, text="📱 Remote Control", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
+            self.left_sidebar_frame, text="📱 Remote Control (Tailscale)", font=ctk.CTkFont(size=13, weight="bold"), anchor="w"
         )
         self.sec_remote_label.pack(padx=LEFT_MENU_PAD_X, pady=(15, 4), fill="x")
         self.remote_server_check_box.pack(**LEFT_MENU_PACK_KWARGS)
-        self.remote_url_label.pack(padx=LEFT_MENU_PAD_X, pady=(0, 6))
+        self.remote_url_label.pack(padx=LEFT_MENU_PAD_X, pady=(2, 2), fill="x")
+        self.remote_pin_label.pack(padx=LEFT_MENU_PAD_X, pady=(2, 4), fill="x")
+        self.remote_btn_frame.pack(**LEFT_MENU_PACK_KWARGS)
 
         # --- SECTION 5: ⚙️ CAMERA & HARDWARE ---
         self.sec_settings_label = ctk.CTkLabel(
@@ -871,7 +1036,7 @@ class CamScanApp(ctk.CTk):
             text=TOOLTIPS["boundary_detector"],
         )
         widgets.Tooltip(
-            widget=self.student_tag_entry,
+            widget=self.student_combobox,
             text=TOOLTIPS["student_tag"],
         )
         widgets.Tooltip(
@@ -938,8 +1103,10 @@ class CamScanApp(ctk.CTk):
         # Clean shutdown protocol
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Start remote server if enabled
-        if self.var_remote_server.get():
+        # Check if remote session startup prompt should be shown
+        if self.active_profile.remote_startup_action == "ask":
+            self.after(600, self.prompt_remote_session_dialog)
+        elif self.active_profile.remote_startup_action == "always":
             try:
                 self.remote_server.start()
             except Exception as e:
@@ -1543,14 +1710,21 @@ class CamScanApp(ctk.CTk):
         watched_dir = self.var_watched_folder.get()
         self.auto_exporter.set_watched_folder(watched_dir)
 
+        subject = self.var_subject.get() or "General"
+        date_str = session.get_system_date_str()
         student_tag = self.var_student_tag.get()
         images = [entry.current_image.copy() for entry in self.entries]
         ocr_mode = self.var_ocr_engine.get()
         engine = ocr.get_ocr_engine(ocr_mode)
 
+        # Auto-add student to active roster if non-empty
+        if student_tag and student_tag.strip():
+            self.profile_manager.add_student(student_tag.strip())
+            self._refresh_student_dropdown()
+
         progress_dialog = ctk.CTkToplevel(self)
         progress_dialog.title("Finalizing Session")
-        progress_dialog.geometry("450x180")
+        progress_dialog.geometry("460x190")
         progress_dialog.resizable(False, False)
         progress_dialog.attributes("-topmost", True)
         progress_dialog.grab_set()
@@ -1558,13 +1732,13 @@ class CamScanApp(ctk.CTk):
         tag_display = student_tag if student_tag else "Untagged"
         status_label = ctk.CTkLabel(
             progress_dialog,
-            text=f"Auto-exporting {n} page(s) for '{tag_display}' to watched folder...",
+            text=f"Auto-exporting {n} page(s) for '{tag_display}' to {subject}/{date_str}...",
             font=ctk.CTkFont(size=14, weight="bold"),
-            wraplength=400,
+            wraplength=420,
         )
         status_label.pack(padx=20, pady=(25, 10))
 
-        progressbar = ctk.CTkProgressBar(progress_dialog, width=380)
+        progressbar = ctk.CTkProgressBar(progress_dialog, width=390)
         progressbar.pack(padx=20, pady=10)
         progressbar.set(0.2)
 
@@ -1576,6 +1750,8 @@ class CamScanApp(ctk.CTk):
                 results = self.auto_exporter.export_session(
                     images=images,
                     student_tag=student_tag,
+                    subject=subject,
+                    date_str=date_str,
                     ocr_engine=engine,
                     progress_callback=_cb,
                 )
@@ -1584,6 +1760,7 @@ class CamScanApp(ctk.CTk):
                     progress_dialog.destroy()
                     self.delete_all_entries()
                     self.var_student_tag.set("")
+                    self._update_path_preview()
                     pdf_path = results.get("pdf", "")
                     tk.messagebox.showinfo(
                         title="Session Finalized",
@@ -1621,14 +1798,231 @@ class CamScanApp(ctk.CTk):
         self.scrollable_frame.update()
         dummy_frame.destroy()
 
+    def _get_path_preview_text(self) -> str:
+        subj = self.var_subject.get() or "General"
+        dt = session.get_system_date_str()
+        stud = self.var_student_tag.get() or "Untagged"
+        return f"📁 Save: {subj} / {dt} / {stud} /"
+
+    def _update_path_preview(self, *args):
+        if hasattr(self, "path_preview_label"):
+            self.path_preview_label.configure(text=self._get_path_preview_text())
+
+    def _get_remote_status_text(self) -> str:
+        if not self.var_remote_server.get():
+            return "Server: Stopped"
+        ts_info = tailscale.get_tailscale_info()
+        if ts_info.running and ts_info.ipv4:
+            return f"🟢 Tailscale: {ts_info.ipv4}:8000"
+        elif ts_info.ipv4:
+            return f"🟠 Tailscale (Idle): {ts_info.ipv4}:8000"
+        return f"🌐 Local: {remote.get_local_ip()}:8000"
+
+    def _refresh_subject_dropdown(self):
+        prof = self.profile_manager.get_active_profile()
+        self.subject_combobox.configure(values=prof.subjects)
+        if prof.active_subject in prof.subjects:
+            self.var_subject.set(prof.active_subject)
+        elif prof.subjects:
+            self.var_subject.set(prof.subjects[0])
+
+    def _refresh_student_dropdown(self):
+        prof = self.profile_manager.get_active_profile()
+        self.student_combobox.configure(values=prof.students)
+        if prof.active_student:
+            self.var_student_tag.set(prof.active_student)
+
+    def on_subject_selected(self, selected: str):
+        prof = self.profile_manager.get_active_profile()
+        prof.active_subject = selected
+        self.profile_manager.save()
+        self._update_path_preview()
+
+    def prompt_add_subject(self):
+        name = simpledialog.askstring(
+            "Add Subject",
+            "Enter main folder / subject name (e.g. Maths, Science):",
+            parent=self,
+        )
+        if name and name.strip():
+            self.profile_manager.add_subject(name.strip())
+            self._refresh_subject_dropdown()
+            self._update_path_preview()
+
+    def prompt_remove_subject(self):
+        cur = self.var_subject.get()
+        if not cur:
+            return
+        if messagebox.askyesno(
+            "Remove Subject", f"Remove '{cur}' from subject list?", parent=self
+        ):
+            self.profile_manager.remove_subject(cur)
+            self._refresh_subject_dropdown()
+            self._update_path_preview()
+
+    def on_student_selected(self, selected: str):
+        prof = self.profile_manager.get_active_profile()
+        prof.active_student = selected
+        self.profile_manager.save()
+        self._update_path_preview()
+
+    def prompt_add_student(self):
+        name = self.var_student_tag.get().strip()
+        if not name:
+            name = simpledialog.askstring(
+                "Add Student",
+                "Enter student name (e.g. Ahmad, Ubaid):",
+                parent=self,
+            )
+        if name and name.strip():
+            self.profile_manager.add_student(name.strip())
+            self._refresh_student_dropdown()
+            self._update_path_preview()
+            messagebox.showinfo(
+                "Student Added",
+                f"Student '{name.strip()}' added to roster.",
+                parent=self,
+            )
+
+    def prompt_remove_student(self):
+        cur = self.var_student_tag.get().strip()
+        if not cur:
+            return
+        if messagebox.askyesno(
+            "Remove Student", f"Remove '{cur}' from student list?", parent=self
+        ):
+            self.profile_manager.remove_student(cur)
+            self.var_student_tag.set("")
+            self._refresh_student_dropdown()
+            self._update_path_preview()
+
+    def switch_user_profile(self, new_profile_name: str):
+        self._save_current_profile_settings()
+        prof = self.profile_manager.switch_profile(new_profile_name)
+        self.active_profile = prof
+        self.var_active_profile.set(prof.name)
+        self.var_subject.set(prof.active_subject)
+        self.var_student_tag.set(prof.active_student)
+        self._refresh_subject_dropdown()
+        self._refresh_student_dropdown()
+        self.var_two_page_mode.set(1 if prof.two_page_mode else 0)
+        self.var_free_capture_mode.set(1 if prof.free_capture_mode else 0)
+        self.var_boundary_detector.set(prof.boundary_detector)
+        self.var_postprocessing_option.set(prof.postprocessing_option)
+        self.var_ocr_engine.set(prof.ocr_engine)
+        self.var_auto_capture.set(1 if prof.auto_capture else 0)
+        self.var_motion_threshold.set(str(prof.motion_threshold))
+        self.var_settle_time.set(str(prof.settle_time))
+        self.var_watched_folder.set(prof.watched_folder)
+        self.auto_exporter.set_watched_folder(prof.watched_folder)
+        self._update_path_preview()
+
+    def prompt_add_profile(self):
+        name = simpledialog.askstring(
+            "New User Profile",
+            "Enter name for new user profile (e.g. Teacher B):",
+            parent=self,
+        )
+        if name and name.strip():
+            new_name = name.strip()
+            self._save_current_profile_settings()
+            self.profile_manager.add_profile(new_name, copy_from_active=True)
+            self.user_profile_option_menu.configure(
+                values=self.profile_manager.get_profile_names()
+            )
+            self.switch_user_profile(new_name)
+
+    def prompt_delete_profile(self):
+        cur = self.var_active_profile.get()
+        if len(self.profile_manager.get_profile_names()) <= 1:
+            messagebox.showwarning(
+                "Cannot Delete",
+                "At least one profile must be retained.",
+                parent=self,
+            )
+            return
+        if messagebox.askyesno(
+            "Delete Profile",
+            f"Delete profile '{cur}' and all its saved settings?",
+            parent=self,
+        ):
+            self.profile_manager.delete_profile(cur)
+            self.user_profile_option_menu.configure(
+                values=self.profile_manager.get_profile_names()
+            )
+            new_active = self.profile_manager.active_profile_name
+            self.switch_user_profile(new_active)
+
+    def _save_current_profile_settings(self):
+        prof = self.profile_manager.get_active_profile()
+        prof.active_subject = self.var_subject.get()
+        prof.active_student = self.var_student_tag.get()
+        prof.two_page_mode = bool(self.var_two_page_mode.get())
+        prof.free_capture_mode = bool(self.var_free_capture_mode.get())
+        prof.boundary_detector = self.var_boundary_detector.get()
+        prof.postprocessing_option = self.var_postprocessing_option.get()
+        prof.ocr_engine = self.var_ocr_engine.get()
+        prof.auto_capture = bool(self.var_auto_capture.get())
+        try:
+            prof.motion_threshold = float(self.var_motion_threshold.get())
+        except ValueError:
+            pass
+        try:
+            prof.settle_time = float(self.var_settle_time.get())
+        except ValueError:
+            pass
+        prof.watched_folder = self.var_watched_folder.get()
+        self.profile_manager.save()
+
+    def prompt_remote_session_dialog(self):
+        prof = self.profile_manager.get_active_profile()
+        if prof.remote_startup_action == "always":
+            if not self.var_remote_server.get():
+                self.var_remote_server.set(1)
+                self.toggle_remote_server()
+            return
+        elif prof.remote_startup_action == "never":
+            return
+
+        def _on_decision(enable: bool, remember: bool):
+            if remember:
+                prof.remote_startup_action = "always" if enable else "never"
+                self.profile_manager.save()
+            if enable:
+                self.var_remote_server.set(1)
+                self.toggle_remote_server()
+                self.show_pairing_qr_dialog()
+            else:
+                self.var_remote_server.set(0)
+                self.toggle_remote_server()
+
+        widgets.StartupRemoteDialog(self, prof.name, _on_decision)
+
+    def show_pairing_qr_dialog(self):
+        qr_img = self.remote_server.get_qr_image()
+        url = self.remote_server.get_url(with_token=True)
+        pin = self.remote_server.get_pairing_pin()
+        widgets.QRCodeDialog(self, qr_img, url, pin)
+
+    def copy_remote_link(self):
+        url = self.remote_server.get_url(with_token=True)
+        self.clipboard_clear()
+        self.clipboard_append(url)
+        if hasattr(self, "btn_copy_link"):
+            self.btn_copy_link.configure(text="✅ Copied!")
+            self.after(1500, lambda: self.btn_copy_link.configure(text="📋 Copy Link"))
+
     def toggle_remote_server(self):
         """Toggle remote control server on/off."""
         if self.var_remote_server.get():
             try:
                 self.remote_server.start()
                 self.remote_url_label.configure(
-                    text=f":8000 ({remote.get_local_ip()})",
+                    text=self._get_remote_status_text(),
                     text_color="#2196f3",
+                )
+                self.remote_pin_label.configure(
+                    text=f"🔑 PIN: {self.remote_server.get_pairing_pin()}",
                 )
             except Exception as e:
                 logging.warning(f"Could not start remote server: {e}")
@@ -1639,12 +2033,16 @@ class CamScanApp(ctk.CTk):
         else:
             self.remote_server.stop()
             self.remote_url_label.configure(
-                text="Server stopped",
+                text="Server: Stopped",
                 text_color="gray",
             )
 
     def on_close(self):
-        """Clean shutdown of remote server and application."""
+        """Clean shutdown of remote server, saving settings and application exit."""
+        try:
+            self._save_current_profile_settings()
+        except Exception:
+            pass
         try:
             self.remote_server.stop()
         except Exception:

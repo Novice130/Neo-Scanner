@@ -18,6 +18,7 @@ dependencies = [
     "pymupdf",
     "fastapi",
     "uvicorn",
+    "qrcode",
 ]
 
 [project.optional-dependencies]

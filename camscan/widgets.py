@@ -203,3 +203,139 @@ class Tooltip:
         # Update references in this class to allow a new tooltip to be created
         self.window = None
         self.showing = False
+
+
+class QRCodeDialog(ctk.CTkToplevel):
+    """
+    Modal dialog displaying Tailscale connection QR code, PIN, and link.
+    """
+
+    def __init__(self, master, qr_image, url: str, pin: str):
+        super().__init__(master)
+        self.title("📱 Remote Scanner Pairing")
+        self.geometry("380x480")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self.grab_set()
+
+        title_lbl = ctk.CTkLabel(
+            self,
+            text="📱 Scan to Control from Phone",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        )
+        title_lbl.pack(pady=(16, 6))
+
+        desc_lbl = ctk.CTkLabel(
+            self,
+            text="Point phone camera at this QR code to connect securely over Tailscale.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            wraplength=340,
+        )
+        desc_lbl.pack(pady=(0, 10))
+
+        if qr_image:
+            ctk_img = ctk.CTkImage(light_image=qr_image, dark_image=qr_image, size=(200, 200))
+            img_lbl = ctk.CTkLabel(self, text="", image=ctk_img)
+            img_lbl.pack(pady=5)
+
+        pin_frame = ctk.CTkFrame(self, fg_color="#1e1e1e", corner_radius=8)
+        pin_frame.pack(padx=20, pady=8, fill="x")
+
+        ctk.CTkLabel(
+            pin_frame,
+            text=f"Pairing PIN:  {pin}",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#ffb74d",
+        ).pack(pady=8)
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(pady=10)
+
+        def _copy():
+            self.clipboard_clear()
+            self.clipboard_append(url)
+            copy_btn.configure(text="✅ Copied!")
+            self.after(1500, lambda: copy_btn.configure(text="📋 Copy Link"))
+
+        copy_btn = ctk.CTkButton(btn_row, text="📋 Copy Link", width=120, command=_copy)
+        copy_btn.pack(side=ctk.LEFT, padx=6)
+
+        close_btn = ctk.CTkButton(
+            btn_row,
+            text="Close",
+            width=100,
+            fg_color="#424242",
+            hover_color="#616161",
+            command=self.destroy,
+        )
+        close_btn.pack(side=ctk.LEFT, padx=6)
+
+
+class StartupRemoteDialog(ctk.CTkToplevel):
+    """
+    Startup prompt asking if the user wants to enable a remote scanner session.
+    """
+
+    def __init__(self, master, profile_name: str, callback):
+        super().__init__(master)
+        self.callback = callback
+        self.title("Neo Scanner Remote Session")
+        self.geometry("420x240")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self.grab_set()
+
+        ctk.CTkLabel(
+            self,
+            text="📱 Remote Scanner Session",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).pack(pady=(18, 6))
+
+        ctk.CTkLabel(
+            self,
+            text=(
+                "Do you want to enable a Remote Neo Scanner session for mobile phone "
+                "control over Tailscale?"
+            ),
+            font=ctk.CTkFont(size=13),
+            wraplength=380,
+            justify="center",
+        ).pack(padx=20, pady=(0, 12))
+
+        self.var_remember = ctk.BooleanVar(value=False)
+        self.remember_cb = ctk.CTkCheckBox(
+            self,
+            text=f"Remember my choice for profile '{profile_name}'",
+            variable=self.var_remember,
+            font=ctk.CTkFont(size=12),
+        )
+        self.remember_cb.pack(pady=6)
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=(12, 10))
+
+        start_btn = ctk.CTkButton(
+            btn_frame,
+            text="Enable Remote Session",
+            fg_color="#1976D2",
+            hover_color="#1565C0",
+            command=lambda: self._done(True),
+        )
+        start_btn.pack(side=ctk.LEFT, padx=8)
+
+        local_btn = ctk.CTkButton(
+            btn_frame,
+            text="Desktop Only",
+            fg_color="#424242",
+            hover_color="#616161",
+            command=lambda: self._done(False),
+        )
+        local_btn.pack(side=ctk.LEFT, padx=8)
+
+    def _done(self, enable: bool):
+        rem = self.var_remember.get()
+        self.destroy()
+        if self.callback:
+            self.callback(enable, rem)
+

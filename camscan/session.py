@@ -3,6 +3,7 @@ Module for managing student session tagging and formatted directory/file naming.
 """
 
 from datetime import datetime
+import os
 import re
 import typing as t
 
@@ -57,3 +58,36 @@ def generate_session_dirname(
     if clean:
         return f"{clean}_{ts_str}"
     return f"captures_{ts_str}"
+
+
+def get_system_date_str(timestamp: t.Optional[datetime] = None) -> str:
+    """
+    Generate dynamic system date subfolder name.
+    Example: '25 Aug' or '5 Sep' based on system clock.
+    """
+    ts = timestamp or datetime.now()
+    return f"{ts.day} {ts.strftime('%b')}"
+
+
+def build_session_export_dir(
+    base_folder: str,
+    subject: str = "General",
+    date_str: t.Optional[str] = None,
+    student_tag: str = "Untagged",
+    timestamp: t.Optional[datetime] = None,
+) -> str:
+    """
+    Build nested export directory path:
+    {base_folder} / {Subject} / {Date} / {Student}/
+    Example:
+    '~/OneDrive/CamScan/Maths/25 Aug/Ahmad'
+    """
+    clean_base = os.path.expanduser(base_folder.strip()) if base_folder else "."
+    clean_subject = sanitize_tag(subject) or "General"
+    clean_date = date_str or get_system_date_str(timestamp)
+    # Sanitize date characters while preserving spaces
+    clean_date = re.sub(r'[^a-zA-Z0-9_\- ]', "", clean_date).strip() or "Today"
+    clean_student = sanitize_tag(student_tag) or "Untagged"
+
+    return os.path.join(clean_base, clean_subject, clean_date, clean_student)
+

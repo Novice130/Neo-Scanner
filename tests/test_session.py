@@ -3,7 +3,13 @@ Tests for student session tagging module.
 """
 
 from datetime import datetime
-from camscan.session import sanitize_tag, generate_session_filename, generate_session_dirname
+from camscan.session import (
+    sanitize_tag,
+    generate_session_filename,
+    generate_session_dirname,
+    get_system_date_str,
+    build_session_export_dir,
+)
 
 
 def test_sanitize_tag():
@@ -33,3 +39,34 @@ def test_generate_session_dirname():
     # Untagged
     dirname_default = generate_session_dirname("", timestamp=fixed_time)
     assert dirname_default == "captures_20260904_143000"
+
+
+def test_get_system_date_str():
+    fixed_time1 = datetime(2026, 8, 25, 10, 0, 0)
+    assert get_system_date_str(fixed_time1) == "25 Aug"
+
+    fixed_time2 = datetime(2026, 9, 5, 12, 0, 0)
+    assert get_system_date_str(fixed_time2) == "5 Sep"
+
+
+def test_build_session_export_dir():
+    fixed_time = datetime(2026, 8, 25, 10, 0, 0)
+    path = build_session_export_dir(
+        base_folder="/Users/teacher/OneDrive",
+        subject="Maths",
+        date_str="25 Aug",
+        student_tag="Ahmad",
+        timestamp=fixed_time,
+    )
+    assert path == "/Users/teacher/OneDrive/Maths/25 Aug/Ahmad"
+
+    # Default fallbacks
+    path_default = build_session_export_dir(
+        base_folder="/Users/teacher/OneDrive",
+        subject="",
+        date_str=None,
+        student_tag="",
+        timestamp=fixed_time,
+    )
+    assert path_default == "/Users/teacher/OneDrive/General/25 Aug/Untagged"
+
