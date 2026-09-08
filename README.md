@@ -19,29 +19,32 @@
 2. **Page Dewarping Upgrade (Notebook Spine Flattening)**:
    - Deep-learning document boundary detection via **YOLOv8** (`yolov8n-seg.pt`).
    - Classical geometric correction using **cubic polynomial curve fitting** and **bicubic remapping (`cv2.remap`)** to flatten curved notebook pages near the spine.
-   - Original OpenCV Hough/Canny contour detection preserved as an instant toggle.
+   - Clean Perspective Crop (quadrilateral contour detection) and OpenCV contour detection.
 
-3. **Student Session Tagging**:
-   - Dedicated "Student Name / ID" field for school and grading workflows.
-   - Automatically tags all capture entries and groups exported files into `{student_tag}_{date}.pdf` and `{student_tag}_{date}/` folders instead of flat directories.
+3. **Hierarchical Dynamic Subfolder Exports**:
+   - System Date auto-extracted from host clock (`{day} {short_month}`, e.g., `25 Aug`, `8 Sep`).
+   - Dynamic Subject / Main Folder selector with add/remove (`Maths`, `English`, `Science`, etc.).
+   - Student Roster selector with add/remove (`Ahmad`, `Ubaid`, etc.).
+   - Structured target folder hierarchy: `{Watched Folder} / {Subject} / {System Date} / {Student Name} /`.
+   - Automatic export of searchable PDF and high-res page images into the student's subfolder.
 
-4. **Auto-Capture on Page Turn**:
+4. **Multi-User Profiles**:
+   - Support for multiple teachers / users on the same computer with isolated persistent settings.
+   - Switch profiles sequentially via header dropdown; instantly loads each user's subjects, students, camera choice, and OCR defaults.
+
+5. **Zero-Trust Tailscale Remote Control & Phone Pairing**:
+   - Startup prompt asking to launch remote session with "remember my choice".
+   - Zero-trust subnet verification strictly limited to Tailscale (`100.64.0.0/10`) and localhost.
+   - Rotating 6-digit PIN and bearer token pairing.
+   - Pairing QR code dialog for instant phone connection.
+   - Mobile web interface with live preview, tactile capture button, Subject & Student selectors, date badge, and remote session finalize.
+
+6. **Auto-Capture on Page Turn**:
    - Computes low-latency frame differences on grayscale downscaled frames.
-   - Detects page-turn motion and triggers capture once motion drops below a configurable threshold and settles for a settle window (0.5–1.0s).
-   - Includes live visual motion status indicator (`Still`, `Page Turning`, `Settling...`, `Captured`) and safety cooldown.
+   - Detects page-turn motion and triggers capture once motion drops below threshold and settles.
+   - Live visual motion indicator (`Still`, `Page Turning`, `Settling...`, `Captured`).
 
-5. **Auto-Export to Watched Folder (OneDrive Sync)**:
-   - Configurable watched folder (defaults to local OneDrive sync directory `~/OneDrive/CamScan`).
-   - One-click **"Finish & Export Session"** action that auto-exports the session PDF and clears the capture list, ready for the next student.
-
-6. **Remote Control over Tailscale**:
-   - Built-in **FastAPI** daemon server on port `8000`.
-   - Low-latency **MJPEG live video stream** (`/api/feed`) and snapshot fallback (`/api/snapshot`).
-   - Mobile-first web app accessible from phone browsers across continents over Tailscale:
-     - Live video stream with tactile big **CAPTURE** button.
-     - Student session input and live thumbnail strip.
-     - Mode toggles (two-page, YOLO dewarp, auto-capture).
-     - Remote session finalize action.
+> 📖 **Detailed Feature Inventory & Verification Checklist**: See [**`FEATURES.md`**](FEATURES.md) for the full feature checklist, testing instructions, and cross-app integration guide.
 
 ---
 
