@@ -8,8 +8,24 @@ This document provides a comprehensive inventory of all features currently enabl
 
 Use this checklist to test each feature on your machine. Mark each item as verified `[x]` or report issues if any step does not behave as expected.
 
-### 1. Tailscale Remote Scanner Session
-- [ ] **Startup Dialog**: When launching the app, a dialog asks: *"Start Tailscale Remote Scanner session for this workstation?"* with "Yes", "No", and "Remember my choice".
+### 1. Station Setup: Host Mode vs. Client Mode (Multi-Classroom Topology)
+- [ ] **Initial Setup Wizard**: On first run, the app prompts with `⚙️ Neo Scanner Station Setup`:
+  - Choose **Host Mode** (Classroom Scanner Hub with camera attached, e.g. "Grade 6 Class").
+  - Choose **Client Mode** (Teacher Roaming Device without direct camera, e.g. "Teacher Laptop").
+- [ ] **Multiple Hosts per Client**:
+  - [ ] A roaming teacher device in Client Mode can save and switch between different classroom host scanner stations (e.g. `Grade 6 Class` and `Grade 7 Class`).
+  - [ ] Dropdown in the sidebar lets the teacher switch to `Grade 6 Class` when in Grade 6, and switch to `Grade 7 Class` when in Grade 7.
+  - [ ] `+ Add Host` button allows registering new classroom stations with Name, Address (IP / URL), and optional PIN.
+  - [ ] Remote capture trigger and finish/export session executed remotely on the active classroom host.
+- [ ] **Multiple Clients per Host**:
+  - [ ] A classroom Host (e.g. Grade 6 workstation) concurrently accepts connections from multiple client devices (Teacher laptop, phone, tablet).
+  - [ ] Client changes to subjects, students, or trigger captures are reflected across all connected devices and the host desktop.
+- [ ] **Role & Setup Switcher**: The sidebar includes a `⚙️ Setup` button allowing the station to switch between Host and Client role or edit station name anytime.
+
+---
+
+### 2. Tailscale Remote Scanner Session
+- [ ] **Startup Dialog**: When launching the app in Host mode, a dialog asks: *"Start Tailscale Remote Scanner session for this workstation?"* with "Yes", "No", and "Remember my choice".
 - [ ] **Tailscale IP Detection**: App detects your machine's `100.x.y.z` Tailscale CGNAT IP address automatically (or falls back to localhost if Tailscale CLI is offline).
 - [ ] **Zero-Trust Security**:
   - [ ] Incoming connections are strictly limited to the Tailscale subnet (`100.64.0.0/10`) and localhost (`127.0.0.1`). Any external network IP is rejected with `403 Forbidden`.
@@ -31,7 +47,7 @@ Use this checklist to test each feature on your machine. Mark each item as verif
 
 ---
 
-### 2. Multi-User Profiles & Persistent Settings
+### 3. Multi-User Profiles & Persistent Settings
 - [ ] **User Profile Dropdown**: Sidebar header features a profile selector (e.g., `Default`, `Teacher A`, `Teacher B`).
 - [ ] **Add User ("+ New...")**: Clicking "+ New..." prompts for a user name and creates an independent profile.
 - [ ] **Per-User Settings Isolation**:
@@ -41,7 +57,7 @@ Use this checklist to test each feature on your machine. Mark each item as verif
 
 ---
 
-### 3. Dynamic Hierarchical Folder Structure
+### 4. Dynamic Hierarchical Folder Structure
 - [ ] **Target Directory Layout**:
   ```
   {Watched Folder} / {Subject} / {System Date} / {Student Name} /
@@ -67,7 +83,7 @@ Use this checklist to test each feature on your machine. Mark each item as verif
 
 ---
 
-### 4. Scanner Controls & Boundary Detection
+### 5. Scanner Controls & Boundary Detection
 - [ ] **Camera Controls**:
   - [ ] Camera source selection (built-in webcam, external USB document camera).
   - [ ] Resolution selector (e.g. 1920x1080, 1280x720).
@@ -82,7 +98,7 @@ Use this checklist to test each feature on your machine. Mark each item as verif
 
 ---
 
-### 5. OCR & Post-Processing Filters
+### 6. OCR & Post-Processing Filters
 - [ ] **Post-Processing Options**:
   - [ ] `Magic Color (CamScanner)`: Enhances contrast, removes paper shadows, whitens background.
   - [ ] `None (Raw Natural)`: Preserves camera image as-is.

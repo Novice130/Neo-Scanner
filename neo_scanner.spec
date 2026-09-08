@@ -35,6 +35,11 @@ hiddenimports = [
     "camscan.motion",
     "camscan.auto_export",
     "camscan.remote",
+    "camscan.profiles",
+    "camscan.tailscale",
+    "camscan.pdf_builder",
+    "platformdirs",
+    "qrcode",
     "utils",
 ]
 
@@ -44,6 +49,8 @@ hiddenimports += collect_submodules("fastapi")
 hiddenimports += collect_submodules("starlette")
 hiddenimports += collect_submodules("pydantic")
 hiddenimports += collect_submodules("pydantic_core")
+hiddenimports += collect_submodules("qrcode")
+hiddenimports += collect_submodules("platformdirs")
 datas += collect_data_files("fastapi")
 datas += collect_data_files("starlette")
 

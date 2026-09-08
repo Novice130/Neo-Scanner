@@ -96,6 +96,13 @@ class MockBridge(RemoteBridge):
     def get_thumbnail(self, index: int):
         return np.full((60, 80, 3), 200, dtype=np.uint8)
 
+    def get_profiles(self):
+        return {"active_profile": "Teacher A", "profiles": ["Teacher A", "Teacher B"]}
+
+    def switch_profile(self, name: str):
+        return {"success": True, "active_profile": name}
+
+
 
 def test_remote_app_security_and_endpoints():
     bridge = MockBridge()
@@ -188,3 +195,15 @@ def test_remote_app_security_and_endpoints():
     assert res.status_code == 200
     assert res.json()["success"] is True
     assert len(bridge.captures) == 0
+
+    # 10. Profiles API (Multi-Teacher Account switching on Host)
+    res = client.get("/api/profiles", headers=headers)
+    assert res.status_code == 200
+    p_data = res.json()
+    assert "Teacher A" in p_data["profiles"]
+    assert "Teacher B" in p_data["profiles"]
+
+    res = client.post("/api/profiles/switch", json={"profile_name": "Teacher B"}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["active_profile"] == "Teacher B"
+

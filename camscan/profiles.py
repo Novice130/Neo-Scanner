@@ -53,6 +53,16 @@ class UserProfile:
     settle_time: float = 0.8
     ui_scaling: str = "100%"
     appearance_mode: str = "System"
+    station_role: str = "host"  # 'host' (classroom scanner hub) or 'client' (teacher roaming controller)
+    station_name: str = "Grade 6 Class"
+    saved_hosts: list[dict] = field(
+        default_factory=lambda: [
+            {"name": "Grade 6 Class", "url": "http://127.0.0.1:8000", "pin": "", "token": ""},
+            {"name": "Grade 7 Class", "url": "http://100.64.0.2:8000", "pin": "", "token": ""},
+        ]
+    )
+    active_host_name: str = "Grade 6 Class"
+    setup_completed: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -233,3 +243,87 @@ class ProfileManager:
             prof.active_student = prof.students[0] if prof.students else ""
         self.save()
         return prof.students
+
+    # ---------------- Station Role & Host Helpers ----------------
+    def set_station_role(self, role: str) -> str:
+        """Set active profile role: 'host' or 'client'."""
+        prof = self.get_active_profile()
+        prof.station_role = "client" if role.lower() == "client" else "host"
+        self.save()
+        return prof.station_role
+
+    def set_station_name(self, name: str) -> str:
+        """Set name identifying this station (e.g. 'Grade 6 Class')."""
+        prof = self.get_active_profile()
+        if name.strip():
+            prof.station_name = name.strip()
+            self.save()
+        return prof.station_name
+
+    def get_saved_hosts(self) -> list[dict]:
+        """Return list of saved host stations for client connections."""
+        prof = self.get_active_profile()
+        return list(prof.saved_hosts)
+
+    def add_saved_host(
+        self, name: str, url: str, pin: str = "", token: str = ""
+    ) -> list[dict]:
+        """Add or update a host station for client connection."""
+        name = name.strip()
+        url = url.strip()
+        if not name or not url:
+            return self.get_saved_hosts()
+        prof = self.get_active_profile()
+        # Remove any existing entry with the same name
+        prof.saved_hosts = [h for h in prof.saved_hosts if h.get("name") != name]
+        prof.saved_hosts.append(
+            {"name": name, "url": url, "pin": pin.strip(), "token": token.strip()}
+        )
+        prof.active_host_name = name
+        self.save()
+        return list(prof.saved_hosts)
+
+    def remove_saved_host(self, name: str) -> list[dict]:
+        """Remove a host station from saved hosts list."""
+        prof = self.get_active_profile()
+        prof.saved_hosts = [h for h in prof.saved_hosts if h.get("name") != name]
+        if not prof.saved_hosts:
+            prof.saved_hosts = [
+                {
+                    "name": "Default Station",
+                    "url": "http://127.0.0.1:8000",
+                    "pin": "",
+                    "token": "",
+                }
+            ]
+        if prof.active_host_name == name:
+            prof.active_host_name = prof.saved_hosts[0]["name"]
+        self.save()
+        return list(prof.saved_hosts)
+
+    def get_active_host(self) -> dict:
+        """Get currently active host station configuration dictionary."""
+        prof = self.get_active_profile()
+        for h in prof.saved_hosts:
+            if h.get("name") == prof.active_host_name:
+                return dict(h)
+        if prof.saved_hosts:
+            prof.active_host_name = prof.saved_hosts[0].get("name", "Default")
+            return dict(prof.saved_hosts[0])
+        return {
+            "name": "Default Station",
+            "url": "http://127.0.0.1:8000",
+            "pin": "",
+            "token": "",
+        }
+
+    def set_active_host(self, name: str) -> dict:
+        """Switch currently selected host station."""
+        prof = self.get_active_profile()
+        for h in prof.saved_hosts:
+            if h.get("name") == name:
+                prof.active_host_name = name
+                self.save()
+                return dict(h)
+        return self.get_active_host()
+

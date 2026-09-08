@@ -67,3 +67,45 @@ def test_profile_manager_lifecycle(tmp_path: Path):
     res_last = pm2.delete_profile("Default")
     assert res_last is False
     assert len(pm2.get_profile_names()) == 1
+
+
+def test_station_role_and_multi_host(tmp_path: Path):
+    cfg_file = tmp_path / "profiles.json"
+    pm = ProfileManager(config_path=cfg_file)
+
+    # Default role is host
+    assert pm.get_active_profile().station_role == "host"
+    assert pm.get_active_profile().station_name == "Grade 6 Class"
+
+    # 1. Switch to Client mode
+    pm.set_station_role("client")
+    assert pm.get_active_profile().station_role == "client"
+
+    # 2. Manage multiple hosts (Grade 6 Class and Grade 7 Class)
+    hosts = pm.get_saved_hosts()
+    assert len(hosts) >= 2
+    host_names = [h["name"] for h in hosts]
+    assert "Grade 6 Class" in host_names
+    assert "Grade 7 Class" in host_names
+
+    # 3. Add Grade 8 Class host
+    pm.add_saved_host("Grade 8 Class", "http://100.64.0.3:8000", pin="123456")
+    updated_hosts = pm.get_saved_hosts()
+    assert any(h["name"] == "Grade 8 Class" for h in updated_hosts)
+    assert pm.get_active_host()["name"] == "Grade 8 Class"
+
+    # 4. Switch active host back to Grade 6 Class
+    active = pm.set_active_host("Grade 6 Class")
+    assert active["name"] == "Grade 6 Class"
+    assert pm.get_active_host()["name"] == "Grade 6 Class"
+
+    # 5. Persistence
+    pm2 = ProfileManager(config_path=cfg_file)
+    assert pm2.get_active_profile().station_role == "client"
+    assert pm2.get_active_host()["name"] == "Grade 6 Class"
+    assert any(h["name"] == "Grade 8 Class" for h in pm2.get_saved_hosts())
+
+    # 6. Remove a host
+    pm2.remove_saved_host("Grade 8 Class")
+    assert not any(h["name"] == "Grade 8 Class" for h in pm2.get_saved_hosts())
+

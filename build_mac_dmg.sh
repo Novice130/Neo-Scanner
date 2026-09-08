@@ -24,7 +24,7 @@ fi
 
 # 2. Package into .dmg using hdiutil
 echo "--- Creating .dmg Disk Image ---"
-rm -rf dist/dmg_staging dist/Neo_Scanner-macOS-v1.0.0.dmg
+rm -rf dist/dmg_staging dist/Neo_Scanner-macOS-v1.0.1.dmg
 mkdir -p dist/dmg_staging
 cp -R "dist/Neo Scanner.app" dist/dmg_staging/
 ln -s /Applications dist/dmg_staging/Applications
@@ -32,8 +32,14 @@ ln -s /Applications dist/dmg_staging/Applications
 hdiutil create -volname "Neo Scanner" \
   -srcfolder dist/dmg_staging \
   -ov -format UDZO \
-  dist/Neo_Scanner-macOS-v1.0.0.dmg
+  dist/Neo_Scanner-macOS-v1.0.1.dmg
 
 rm -rf dist/dmg_staging
 
-echo "=== Successfully built dist/Neo_Scanner-macOS-v1.0.0.dmg ==="
+echo "=== Successfully built dist/Neo_Scanner-macOS-v1.0.1.dmg ==="
+
+# 3. Install directly to /Applications
+echo "--- Installing to /Applications/Neo Scanner.app ---"
+rm -rf "/Applications/Neo Scanner.app"
+cp -R "dist/Neo Scanner.app" "/Applications/Neo Scanner.app"
+echo "=== Installed Neo Scanner.app to /Applications ==="

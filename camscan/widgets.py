@@ -339,3 +339,205 @@ class StartupRemoteDialog(ctk.CTkToplevel):
         if self.callback:
             self.callback(enable, rem)
 
+
+class AddHostDialog(ctk.CTkToplevel):
+    """
+    Dialog to add or edit a classroom host scanner station.
+    """
+
+    def __init__(self, master, callback, initial_name="", initial_url="http://", initial_pin=""):
+        super().__init__(master)
+        self.callback = callback
+        self.title("Add Classroom Scanner Host")
+        self.geometry("380x300")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self.grab_set()
+
+        ctk.CTkLabel(
+            self,
+            text="🏫 Add Classroom Host Station",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        ).pack(pady=(16, 8))
+
+        form_frame = ctk.CTkFrame(self, fg_color="transparent")
+        form_frame.pack(padx=20, pady=5, fill="x")
+
+        ctk.CTkLabel(form_frame, text="Host Name (e.g. Grade 6 Class):", anchor="w").pack(
+            fill="x", pady=(2, 2)
+        )
+        self.name_entry = ctk.CTkEntry(form_frame, placeholder_text="Grade 6 Class")
+        if initial_name:
+            self.name_entry.insert(0, initial_name)
+        self.name_entry.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(form_frame, text="Host Address / IP (e.g. http://100.x.y.z:8000):", anchor="w").pack(
+            fill="x", pady=(2, 2)
+        )
+        self.url_entry = ctk.CTkEntry(form_frame, placeholder_text="http://100.64.0.1:8000")
+        if initial_url:
+            self.url_entry.insert(0, initial_url)
+        self.url_entry.pack(fill="x", pady=(0, 8))
+
+        ctk.CTkLabel(form_frame, text="Pairing PIN (if required):", anchor="w").pack(
+            fill="x", pady=(2, 2)
+        )
+        self.pin_entry = ctk.CTkEntry(form_frame, placeholder_text="6-digit PIN (optional)")
+        if initial_pin:
+            self.pin_entry.insert(0, initial_pin)
+        self.pin_entry.pack(fill="x", pady=(0, 10))
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=8)
+
+        ctk.CTkButton(
+            btn_frame,
+            text="Save Host",
+            width=110,
+            command=self._save,
+        ).pack(side=ctk.LEFT, padx=6)
+
+        ctk.CTkButton(
+            btn_frame,
+            text="Cancel",
+            width=90,
+            fg_color="#424242",
+            hover_color="#616161",
+            command=self.destroy,
+        ).pack(side=ctk.LEFT, padx=6)
+
+    def _save(self):
+        name = self.name_entry.get().strip()
+        url = self.url_entry.get().strip()
+        pin = self.pin_entry.get().strip()
+        if name and url:
+            if not url.startswith("http://") and not url.startswith("https://"):
+                url = f"http://{url}"
+            self.destroy()
+            if self.callback:
+                self.callback(name, url, pin)
+
+
+class SetupStationDialog(ctk.CTkToplevel):
+    """
+    Initial setup and mode configuration dialog:
+    Allows setting up as a Host (Classroom Scanner Station) or Client (Teacher Controller).
+    Same client can connect to multiple hosts (Grade 6, Grade 7), and one host can serve multiple clients.
+    """
+
+    def __init__(self, master, current_role: str, current_station_name: str, callback):
+        super().__init__(master)
+        self.callback = callback
+        self.title("Neo Scanner Setup — Station Role")
+        self.geometry("480x420")
+        self.resizable(False, False)
+        self.attributes("-topmost", True)
+        self.grab_set()
+
+        ctk.CTkLabel(
+            self,
+            text="⚙️ Neo Scanner Station Setup",
+            font=ctk.CTkFont(size=18, weight="bold"),
+        ).pack(pady=(18, 6))
+
+        ctk.CTkLabel(
+            self,
+            text="Choose whether this device will operate as a Classroom Host or Client Controller:",
+            font=ctk.CTkFont(size=12),
+            text_color="gray",
+            wraplength=440,
+            justify="center",
+        ).pack(padx=20, pady=(0, 14))
+
+        self.var_role = ctk.StringVar(value=current_role if current_role in ["host", "client"] else "host")
+
+        # Host Option Card
+        host_frame = ctk.CTkFrame(self, corner_radius=10)
+        host_frame.pack(fill="x", padx=20, pady=6)
+
+        host_radio = ctk.CTkRadioButton(
+            host_frame,
+            text="🖥️ Host Station (Classroom Scanner Hub)",
+            variable=self.var_role,
+            value="host",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        host_radio.pack(anchor="w", padx=14, pady=(10, 4))
+
+        ctk.CTkLabel(
+            host_frame,
+            text="Physical document camera connected here. Runs AI boundary detection & OCR. Accepts connections from multiple teacher client devices.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            wraplength=420,
+            justify="left",
+        ).pack(anchor="w", padx=14, pady=(0, 8))
+
+        # Client Option Card
+        client_frame = ctk.CTkFrame(self, corner_radius=10)
+        client_frame.pack(fill="x", padx=20, pady=6)
+
+        client_radio = ctk.CTkRadioButton(
+            client_frame,
+            text="💻 Client Controller (Teacher Roaming Device)",
+            variable=self.var_role,
+            value="client",
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        client_radio.pack(anchor="w", padx=14, pady=(10, 4))
+
+        ctk.CTkLabel(
+            client_frame,
+            text="For roaming teachers. Connects over Tailscale / LAN to multiple classroom stations (e.g. Grade 6, Grade 7) to trigger captures and manage sessions remotely.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            wraplength=420,
+            justify="left",
+        ).pack(anchor="w", padx=14, pady=(0, 8))
+
+        # Station / Classroom Name
+        name_frame = ctk.CTkFrame(self, fg_color="transparent")
+        name_frame.pack(fill="x", padx=24, pady=(8, 4))
+
+        ctk.CTkLabel(
+            name_frame,
+            text="Station / Classroom Name (e.g. Grade 6 Class):",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(0, 2))
+
+        self.name_entry = ctk.CTkEntry(name_frame, placeholder_text="Grade 6 Class")
+        if current_station_name:
+            self.name_entry.insert(0, current_station_name)
+        else:
+            self.name_entry.insert(0, "Grade 6 Class")
+        self.name_entry.pack(fill="x")
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(pady=(16, 12))
+
+        ctk.CTkButton(
+            btn_row,
+            text="Confirm Setup",
+            width=140,
+            font=ctk.CTkFont(weight="bold"),
+            command=self._confirm,
+        ).pack(side=ctk.LEFT, padx=8)
+
+        ctk.CTkButton(
+            btn_row,
+            text="Cancel",
+            width=90,
+            fg_color="#424242",
+            hover_color="#616161",
+            command=self.destroy,
+        ).pack(side=ctk.LEFT, padx=8)
+
+    def _confirm(self):
+        role = self.var_role.get()
+        station_name = self.name_entry.get().strip() or "Grade 6 Class"
+        self.destroy()
+        if self.callback:
+            self.callback(role, station_name)
+
+

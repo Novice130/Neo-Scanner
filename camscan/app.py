@@ -488,6 +488,19 @@ class CamScanApp(ctk.CTk):
         init_remote = 1 if self.active_profile.remote_startup_action == "always" else 0
         self.var_remote_server = tk.IntVar(value=init_remote)
 
+        # Station Role and Host-Client configuration
+        self.var_station_role = tk.StringVar(
+            value=getattr(self.active_profile, "station_role", "host")
+        )
+        self.var_station_name = tk.StringVar(
+            value=getattr(self.active_profile, "station_name", "Grade 6 Class")
+        )
+        self.var_active_host = tk.StringVar(
+            value=getattr(self.active_profile, "active_host_name", "Grade 6 Class")
+        )
+        self.var_client_status = tk.StringVar(value="Ready")
+        self.host_client = None
+
         # configure window
         self.title(WINDOW_TITLE)
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
@@ -574,6 +587,75 @@ class CamScanApp(ctk.CTk):
             command=change_ui_scaling_event,
         )
         self.scaling_option_menu.set("100%")
+
+        # Station Role banner and Setup trigger
+        self.station_banner_frame = ctk.CTkFrame(
+            self.left_sidebar_frame, fg_color=("#e0e0e0", "#2b2b2b"), corner_radius=8
+        )
+        self.station_role_label = ctk.CTkLabel(
+            self.station_banner_frame,
+            text=f"🖥️ Host: {self.var_station_name.get()}",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        self.station_setup_btn = ctk.CTkButton(
+            self.station_banner_frame,
+            text="⚙️ Setup",
+            width=65,
+            height=24,
+            command=self.prompt_setup_station_dialog,
+        )
+        self.station_role_label.pack(side=ctk.LEFT, padx=8, pady=4)
+        self.station_setup_btn.pack(side=ctk.RIGHT, padx=6, pady=4)
+        self.station_banner_frame.pack(fill=ctk.X, pady=(4, 6))
+
+        # Classroom Host Selection (for Client Mode)
+        self.client_host_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
+        self.client_host_label = ctk.CTkLabel(
+            self.client_host_frame,
+            text="🏫 Host Station:",
+            anchor="w",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        self.client_host_subframe = ctk.CTkFrame(self.client_host_frame, fg_color="transparent")
+        self.host_option_menu = ctk.CTkOptionMenu(
+            self.client_host_subframe,
+            values=[h.get("name", "Station") for h in self.profile_manager.get_saved_hosts()],
+            variable=self.var_active_host,
+            command=self.on_host_selected,
+            width=135,
+        )
+        self.add_host_btn = ctk.CTkButton(
+            self.client_host_subframe, text="+", width=28, command=self.prompt_add_host
+        )
+        self.del_host_btn = ctk.CTkButton(
+            self.client_host_subframe, text="-", width=28, command=self.prompt_remove_host
+        )
+        self.client_status_label = ctk.CTkLabel(
+            self.client_host_frame, text="⚪ Ready", font=ctk.CTkFont(size=11), text_color="gray"
+        )
+        self.remote_capture_btn = ctk.CTkButton(
+            self.client_host_frame,
+            text="📸 Remote Capture",
+            fg_color="#2e7d32",
+            hover_color="#1b5e20",
+            command=self.trigger_remote_host_capture,
+        )
+        self.remote_finalize_btn = ctk.CTkButton(
+            self.client_host_frame,
+            text="📁 Finish & Export Session",
+            fg_color="#1565c0",
+            hover_color="#0d47a1",
+            command=self.finalize_remote_host_session,
+        )
+
+        self.client_host_label.pack(fill=ctk.X, pady=(2, 2))
+        self.host_option_menu.pack(side=ctk.LEFT, fill=ctk.X, expand=True, padx=(0, 4))
+        self.add_host_btn.pack(side=ctk.LEFT, padx=(0, 2))
+        self.del_host_btn.pack(side=ctk.LEFT)
+        self.client_host_subframe.pack(fill=ctk.X, pady=(0, 4))
+        self.client_status_label.pack(fill=ctk.X, pady=(0, 4))
+        self.remote_capture_btn.pack(fill=ctk.X, pady=(2, 2))
+        self.remote_finalize_btn.pack(fill=ctk.X, pady=(2, 6))
 
         # Multi-user profile selector widgets
         self.user_profile_frame = ctk.CTkFrame(self.left_sidebar_frame, fg_color="transparent")
@@ -1103,8 +1185,13 @@ class CamScanApp(ctk.CTk):
         # Clean shutdown protocol
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
-        # Check if remote session startup prompt should be shown
-        if self.active_profile.remote_startup_action == "ask":
+        # Initialize station role UI
+        self._update_station_ui()
+
+        # Check if initial station setup or remote prompt should be shown
+        if not getattr(self.active_profile, "setup_completed", False):
+            self.after(500, self.prompt_setup_station_dialog)
+        elif self.active_profile.remote_startup_action == "ask":
             self.after(600, self.prompt_remote_session_dialog)
         elif self.active_profile.remote_startup_action == "always":
             try:
@@ -1915,6 +2002,11 @@ class CamScanApp(ctk.CTk):
         self.var_settle_time.set(str(prof.settle_time))
         self.var_watched_folder.set(prof.watched_folder)
         self.auto_exporter.set_watched_folder(prof.watched_folder)
+        self.var_station_role.set(getattr(prof, "station_role", "host"))
+        self.var_station_name.set(getattr(prof, "station_name", "Grade 6 Class"))
+        self.var_active_host.set(getattr(prof, "active_host_name", "Grade 6 Class"))
+        self._refresh_host_dropdown()
+        self._update_station_ui()
         self._update_path_preview()
 
     def prompt_add_profile(self):
@@ -1972,7 +2064,213 @@ class CamScanApp(ctk.CTk):
         except ValueError:
             pass
         prof.watched_folder = self.var_watched_folder.get()
+        prof.station_role = self.var_station_role.get()
+        prof.station_name = self.var_station_name.get()
+        prof.active_host_name = self.var_active_host.get()
         self.profile_manager.save()
+
+    def _init_host_client(self):
+        active_host = self.profile_manager.get_active_host()
+        url = active_host.get("url", "http://127.0.0.1:8000")
+        pin = active_host.get("pin", "")
+        token = active_host.get("token", "")
+        self.host_client = remote.HostClient(base_url=url, token=token, pin=pin)
+
+    def _update_station_ui(self):
+        role = self.var_station_role.get()
+        st_name = self.var_station_name.get()
+        if hasattr(self, "station_role_label"):
+            if role == "client":
+                self.station_role_label.configure(text=f"💻 Client: {st_name}")
+            else:
+                self.station_role_label.configure(text=f"🖥️ Host: {st_name}")
+
+        if hasattr(self, "client_host_frame"):
+            if role == "client":
+                self.client_host_frame.pack(
+                    fill=ctk.X, pady=(2, 6), before=self.user_profile_frame
+                )
+                self._connect_to_active_host()
+            else:
+                self.client_host_frame.pack_forget()
+
+    def prompt_setup_station_dialog(self):
+        def _on_setup_done(role: str, station_name: str):
+            self.profile_manager.set_station_role(role)
+            self.profile_manager.set_station_name(station_name)
+            self.active_profile.setup_completed = True
+            self.profile_manager.save()
+            self.var_station_role.set(role)
+            self.var_station_name.set(station_name)
+            self._update_station_ui()
+            if role == "host":
+                if not self.var_remote_server.get():
+                    self.var_remote_server.set(1)
+                    self.toggle_remote_server()
+            else:
+                self._connect_to_active_host()
+
+        widgets.SetupStationDialog(
+            self,
+            current_role=self.var_station_role.get(),
+            current_station_name=self.var_station_name.get(),
+            callback=_on_setup_done,
+        )
+
+    def prompt_add_host(self):
+        def _on_add(name: str, url: str, pin: str):
+            self.profile_manager.add_saved_host(name, url, pin=pin)
+            self.var_active_host.set(name)
+            self._refresh_host_dropdown()
+            self._connect_to_active_host()
+
+        widgets.AddHostDialog(self, callback=_on_add)
+
+    def prompt_remove_host(self):
+        cur = self.var_active_host.get()
+        if len(self.profile_manager.get_saved_hosts()) <= 1:
+            messagebox.showwarning(
+                "Cannot Delete", "At least one host station must be saved.", parent=self
+            )
+            return
+        if messagebox.askyesno(
+            "Remove Host", f"Remove host station '{cur}'?", parent=self
+        ):
+            self.profile_manager.remove_saved_host(cur)
+            self.var_active_host.set(
+                self.profile_manager.get_active_host().get("name", "Default")
+            )
+            self._refresh_host_dropdown()
+            self._connect_to_active_host()
+
+    def on_host_selected(self, host_name: str):
+        self.profile_manager.set_active_host(host_name)
+        self._connect_to_active_host()
+
+    def _refresh_host_dropdown(self):
+        if hasattr(self, "host_option_menu"):
+            names = [
+                h.get("name", "Station")
+                for h in self.profile_manager.get_saved_hosts()
+            ]
+            self.host_option_menu.configure(values=names)
+
+    def _connect_to_active_host(self):
+        self._init_host_client()
+
+        def _check():
+            res = self.host_client.get_status()
+            if res.get("offline"):
+                self.after(
+                    0,
+                    lambda: self._update_host_connection_status(
+                        False, "Offline / Unreachable"
+                    ),
+                )
+            elif res.get("error") and res.get("status_code") == 401:
+                pin = self.profile_manager.get_active_host().get("pin", "")
+                if pin:
+                    auth_res = self.host_client.authenticate(pin)
+                    if auth_res.get("token"):
+                        self.after(
+                            0,
+                            lambda: self._update_host_connection_status(
+                                True, f"Connected ({self.host_client.base_url})"
+                            ),
+                        )
+                        return
+                self.after(
+                    0,
+                    lambda: self._update_host_connection_status(
+                        False, "PIN Required"
+                    ),
+                )
+            elif res.get("subject"):
+                self.after(
+                    0,
+                    lambda: self._update_host_connection_status(
+                        True, f"Connected ({self.host_client.base_url})"
+                    ),
+                )
+            else:
+                self.after(
+                    0,
+                    lambda: self._update_host_connection_status(
+                        True, f"Connected ({self.host_client.base_url})"
+                    ),
+                )
+
+        threading.Thread(target=_check, daemon=True).start()
+
+    def _update_host_connection_status(self, connected: bool, msg: str):
+        if hasattr(self, "client_status_label"):
+            if connected:
+                self.client_status_label.configure(
+                    text=f"🟢 {msg}", text_color="#4caf50"
+                )
+            else:
+                self.client_status_label.configure(
+                    text=f"🔴 {msg}", text_color="#f44336"
+                )
+
+    def trigger_remote_host_capture(self):
+        if not self.host_client:
+            return
+
+        def _do():
+            res = self.host_client.trigger_capture()
+            if res.get("success"):
+                count = res.get("count", 0)
+                self.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Remote Capture",
+                        f"Captured successfully on host!\nTotal captures: {count}",
+                        parent=self,
+                    ),
+                )
+            else:
+                err = res.get("error", "Failed")
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "Capture Error",
+                        f"Could not capture on host station:\n{err}",
+                        parent=self,
+                    ),
+                )
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def finalize_remote_host_session(self):
+        if not self.host_client:
+            return
+
+        def _do():
+            res = self.host_client.finalize_session()
+            if res.get("success"):
+                pdf = res.get("pdf_path", "PDF compiled")
+                self.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Session Exported",
+                        f"Session exported successfully on Host station!\nOutput: {pdf}",
+                        parent=self,
+                    ),
+                )
+            else:
+                err = res.get("error", "Export failed")
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "Export Error",
+                        f"Could not finalize session on host station:\n{err}",
+                        parent=self,
+                    ),
+                )
+
+        threading.Thread(target=_do, daemon=True).start()
+
 
     def prompt_remote_session_dialog(self):
         prof = self.profile_manager.get_active_profile()

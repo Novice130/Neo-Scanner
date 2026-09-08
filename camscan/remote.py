@@ -150,12 +150,18 @@ class AppBridge(RemoteBridge):
         active_prof_name = "Default"
         subjects_list = [subject]
         students_list = [tag] if tag else []
+        profiles_list = ["Default"]
+        station_name = "Grade 6 Class"
+        station_role = "host"
 
         if hasattr(self.app, "profile_manager"):
             prof = self.app.profile_manager.get_active_profile()
             active_prof_name = prof.name
             subjects_list = list(prof.subjects)
             students_list = list(prof.students)
+            profiles_list = self.app.profile_manager.get_profile_names()
+            station_name = getattr(prof, "station_name", "Grade 6 Class")
+            station_role = getattr(prof, "station_role", "host")
 
         count = len(self.app.entries)
         captures = [
@@ -172,6 +178,9 @@ class AppBridge(RemoteBridge):
             "students": students_list,
             "system_date": session.get_system_date_str(),
             "active_profile": active_prof_name,
+            "profiles": profiles_list,
+            "station_name": station_name,
+            "station_role": station_role,
             "capture_count": count,
             "captures": captures,
             "two_page_mode": bool(self.app.var_two_page_mode.get()) if hasattr(self.app, "var_two_page_mode") else False,
@@ -186,6 +195,20 @@ class AppBridge(RemoteBridge):
                 "magic_dns": ts_info.magic_dns,
             }
         }
+
+    def get_profiles(self) -> dict:
+        if hasattr(self.app, "profile_manager"):
+            return {
+                "active_profile": self.app.profile_manager.active_profile_name,
+                "profiles": self.app.profile_manager.get_profile_names(),
+            }
+        return {"active_profile": "Default", "profiles": ["Default"]}
+
+    def switch_profile(self, name: str) -> dict:
+        if hasattr(self.app, "switch_user_profile"):
+            self.app.after(0, lambda: self.app.switch_user_profile(name))
+            return {"success": True, "active_profile": name}
+        return {"success": False, "error": "Profile switching unavailable"}
 
     def set_student_tag(self, tag: str) -> str:
         self.app.after(0, lambda: self.app.var_student_tag.set(tag))
@@ -1079,6 +1102,20 @@ def create_remote_app(
             raise HTTPException(status_code=404, detail="Capture index not found")
         return {"success": True}
 
+    class ProfileSwitchRequest(BaseModel):
+        profile_name: str
+
+    @app.get("/api/profiles")
+    async def list_profiles(authenticated: bool = Depends(verify_auth)):
+        """List available profiles and active profile on the host."""
+        return bridge.get_profiles()
+
+    @app.post("/api/profiles/switch")
+    async def switch_host_profile(req: ProfileSwitchRequest, authenticated: bool = Depends(verify_auth)):
+        """Switch active profile on host machine."""
+        res = bridge.switch_profile(req.profile_name)
+        return res
+
     return app
 
 
@@ -1156,3 +1193,68 @@ class RemoteServerManager:
         """Return PIL Image of pairing QR code."""
         url = self.get_url(with_token=True)
         return self.security_manager.generate_qr_image(url)
+
+
+class HostClient:
+    """
+    HTTP Client for teacher client devices connecting to one or more Host scanner stations
+    (e.g., Grade 6 Class, Grade 7 Class) over Tailscale or local network.
+    """
+
+    def __init__(self, base_url: str, token: str = "", pin: str = ""):
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.pin = pin
+
+    def _request(self, method: str, endpoint: str, data: t.Optional[dict] = None) -> dict:
+        import urllib.request
+        import urllib.error
+        import json
+
+        url = f"{self.base_url}{endpoint}"
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+
+        body = json.dumps(data).encode("utf-8") if data is not None else None
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=4.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                err_json = json.loads(e.read().decode("utf-8"))
+                return {"error": err_json.get("detail", str(e)), "status_code": e.code}
+            except Exception:
+                return {"error": str(e), "status_code": e.code}
+        except Exception as e:
+            return {"error": str(e), "offline": True}
+
+    def authenticate(self, pin: str) -> dict:
+        res = self._request("POST", "/api/auth", {"pin": pin})
+        if res.get("token"):
+            self.token = res["token"]
+            self.pin = pin
+        return res
+
+    def get_status(self) -> dict:
+        return self._request("GET", "/api/status")
+
+    def trigger_capture(self) -> dict:
+        return self._request("POST", "/api/capture")
+
+    def finalize_session(self) -> dict:
+        return self._request("POST", "/api/finalize")
+
+    def set_subject(self, subject: str) -> dict:
+        return self._request("POST", "/api/session", {"subject": subject})
+
+    def set_student(self, student: str) -> dict:
+        return self._request("POST", "/api/session", {"student_tag": student})
+
+    def get_profiles(self) -> dict:
+        return self._request("GET", "/api/profiles")
+
+    def switch_profile(self, profile_name: str) -> dict:
+        return self._request("POST", "/api/profiles/switch", {"profile_name": profile_name})
+
