@@ -20,6 +20,14 @@ fi
 if [ -f "/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib" ]; then
   cp -f /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/libcrypto.3.dylib"
   cp -f /opt/homebrew/opt/openssl@3/lib/libssl.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/libssl.3.dylib"
+  if [ -d "dist/Neo Scanner.app/Contents/Frameworks/cv2/__dot__dylibs" ]; then
+    cp -f /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/cv2/__dot__dylibs/libcrypto.3.dylib"
+    cp -f /opt/homebrew/opt/openssl@3/lib/libssl.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/cv2/__dot__dylibs/libssl.3.dylib"
+  fi
+  if [ -d "dist/Neo Scanner.app/Contents/Frameworks/cv2/.dylibs" ]; then
+    cp -f /opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/cv2/.dylibs/libcrypto.3.dylib"
+    cp -f /opt/homebrew/opt/openssl@3/lib/libssl.3.dylib "dist/Neo Scanner.app/Contents/Frameworks/cv2/.dylibs/libssl.3.dylib"
+  fi
 fi
 
 # 2. Package into .dmg using hdiutil
